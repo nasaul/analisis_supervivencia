@@ -1,3 +1,14 @@
 Objetivo: Predecir el tiempo (número de ciclos) en el que una máquina comience a fallar.
 
-Contamos con 50% de censura
+0. EDA
+
+Contamos con 50% de censura por la derecha, buscaremos realizar 3 modelos 
+
+1. Supervivencia usando total de ciclos antes del fallo por unidad
+2. Supervivencia usando las medidas de sensor (vida acelerada o riesgos proporcionales)
+3. Modelo predictivo de supervivencia usando medidas de sensor en t-1 y entorno operativo en t
+
+4. Trabajo escrito y Presentación
+
+
+
