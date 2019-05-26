@@ -311,9 +311,9 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
- Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico.
-
-Comparación con el modelo exponencial:
+ Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico. 
+ 
+ Comparación con el modelo Exponencial: Este modelo será el que se ajuste menos a nuestra función de supervivencia
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "exponential")
@@ -337,7 +337,7 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
-Comparación con el modelo Weibull:
+ Comparación con el modelo Weibull:
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "weibull")
@@ -361,7 +361,7 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
-Comparación con el modelo lognormal:
+  Comparación con el modelo Lognormal:
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "lognormal")
@@ -385,7 +385,7 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
-Comparación con el modelo loglogistico:
+  Comparación con el modelo Loglogistico: 
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "loglogistic")
@@ -411,7 +411,7 @@ xfit_tbl %>%
 
 ## Modelos de vida acelerada
 
-Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo lognormal como loglogistico.
+ Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo lognormal como loglogistico.
 
 ```{r}
 xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "loglogistic")
