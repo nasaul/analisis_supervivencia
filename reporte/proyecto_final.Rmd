@@ -1,21 +1,130 @@
 ---
-title: "Proyecto Final"
-output: html_notebook
+title:    "Proyecto Final Análisis de Supervivencia"
+subtitle: "Análisis de Supervivencia para fallas de motor"
+author:  
+  - "Víctor Samayoa \t- 175750"
+  - "Saúl Caballero \t- 133930"
+  - "Delia Del Águila \t- 167188"
+output: 
+  pdf_document:
+    number_sections: true
+    toc_depth: 2
+fontsize: 12pt
+header-includes:
+  - \usepackage[spanish]{babel}
+  - \decimalpoint
+documentclass: "article"
+# bibliography: "references.bib"
 ---
 
-**EDA**
 
-```{r, warning=FALSE, message=FALSE}
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
 # Cargo de librerias
 library(dplyr)
 library(sqldf)
+library(readr)
 library(ggplot2)
 library(ggthemes)
+library(here)
+library(TraMineR)
+library(reshape2)
+library(tidyr)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+datos <- read_rds(
+  here::here("datos/datos.rds")
+) %>% 
+  select("id":"sensor_21", "delta")
 ```
+
+# Introducción 
+
+Se obtuvo la base de datos usada para la competencia de desafío de pronóstico en la Conferencia Internacional sobre pronóstico y gestión de la salud (PHM08). [1]
+
+La base consiste en múltiples series de tiempo multivariadas. Cada serie es de un motor diferente pero de un mismo tipo. Cada motor arranca con diferentes grados de desgaste inicial y variación de fabricación que es desconocido para el usuario. Este desgaste y variación se considera normal, es decir, no se considera una condición de falla. Hay tres configuraciones operativas que tienen un efecto sustancial en el rendimiento del motor, además se cuentan con medidas de 211 sensores en cada ciclo.
+El motor funciona normalmente al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo será crear la función de supervivencia para los motores donde el evento de falla será cuando el motor no pueda seguir funcionando y tenga que ser mandado a mantenimiento.
+
+## Análisis de Datos
+Nuestra base de datos cuenta con 75,738 registros correspondientes a 436 motores, donde cada registro corresponde a un ciclo de un motor en específico e incluye las configuraciones iniciales del ciclo así como las mediciones de los sensores.
+
+Contamos con 50% de censura por la derecha, donde si el motor no tiene censura su último registro será del último ciclo antes de mantenimiento. En la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento o en qué ciclo se detuvieron las mediciones, es decir en qué ciclo la censura comenzó.
+
+```{r}
+datos %>% 
+  filter(delta == 1) %>% 
+  select(id, ciclo) %>% 
+  mutate(
+    id = gsub("e(.*)", "\\1", id) %>% as.numeric
+  ) %>% 
+  group_by(id) %>% 
+  summarise(ciclo = max(ciclo)) %>% 
+  ggplot(
+    aes(
+      y = ciclo,
+      x = reorder(id, ciclo)
+    )
+  ) +
+  geom_bar(
+    stat = "identity",
+    fill = "#011f4b",
+    colour = "#011f4b"
+  ) +
+  coord_flip() +
+  theme_gdocs() +
+  theme(
+    axis.text.y  = element_blank(),
+  ) +
+  labs(
+    y = "Número de Ciclos",
+    x = "Motores",
+    title = "Datos sin censura"
+  )
+```
+
+Para el caso de motores sin censura, en la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento y en qué ciclo es mandado a mantenimiento dada una falla.
+
+```{r}
+datos %>% 
+  filter(delta == 0) %>% 
+  select(id, ciclo) %>% 
+  mutate(
+    id = gsub("c(.*)", "\\1", id) %>% as.numeric
+  ) %>% 
+  group_by(id) %>% 
+  summarise(ciclo = max(ciclo)) %>% 
+  ggplot(
+    aes(
+      y = ciclo,
+      x = reorder(id, ciclo)
+    )
+  ) +
+  geom_bar(
+    stat = "identity",
+    fill = "#011f4b",
+    colour = "#011f4b"
+  ) +
+  coord_flip() +
+  theme_gdocs() +
+  theme(
+    axis.text.y  = element_blank(),
+  ) +
+  labs(
+    y = "Número de Ciclos",
+    x = "Motores",
+    title = "Datos con censura"
+  )
+```
+
+
+
+# COSO EDA
 
 Contamos con 75,738 registros de ciclos de motores
 ```{r}
-datos <- as.data.frame(select(readRDS("datos.rds"), "id":"sensor_21", "delta"))   
+datos <- read_rds(
+  here::here("datos/datos.rds")
+) %>% 
+  select("id":"sensor_21", "delta")
 nrow(datos)
 ```
 
@@ -169,33 +278,33 @@ summary(datos[6:26])
 ```
 
 ```{r}
-ggplot(datos %>% filter(id=='e5'), aes(ciclo)) +
-  geom_line(aes(y = sensor_1, colour = "sensor_1")) +
-  geom_line(aes(y = sensor_2, colour = "sensor_2")) +
-  geom_line(aes(y = sensor_3, colour = "sensor_3")) +
-  geom_line(aes(y = sensor_4, colour = "sensor_4")) +
-  geom_line(aes(y = sensor_5, colour = "sensor_5")) +
-  geom_line(aes(y = sensor_6, colour = "sensor_6")) +
-  geom_line(aes(y = sensor_7, colour = "sensor_7")) +
-  geom_line(aes(y = sensor_8, colour = "sensor_8")) +
-  geom_line(aes(y = sensor_9, colour = "sensor_9")) +
-  geom_line(aes(y = sensor_10, colour = "sensor_10")) +
-  geom_line(aes(y = sensor_11, colour = "sensor_11")) +
-  geom_line(aes(y = sensor_12, colour = "sensor_12")) +
-  geom_line(aes(y = sensor_13, colour = "sensor_13")) +
-  geom_line(aes(y = sensor_14, colour = "sensor_14")) +
-  geom_line(aes(y = sensor_15, colour = "sensor_15")) +
-  geom_line(aes(y = sensor_16, colour = "sensor_16")) +
-  geom_line(aes(y = sensor_17, colour = "sensor_17")) +
-  geom_line(aes(y = sensor_18, colour = "sensor_18")) +
-  geom_line(aes(y = sensor_19, colour = "sensor_19")) +
-  geom_line(aes(y = sensor_20, colour = "sensor_20")) +
-  geom_line(aes(y = sensor_21, colour = "sensor_21")) +
+datos %>% 
+  filter(id == "e5") %>% 
+  select(-c(id, starts_with("conf"), delta)) %>% 
+  gather(
+    key, 
+    value, 
+    -ciclo
+  ) %>% 
+  mutate(
+    key = gsub("sensor_(.*)", "Sensor \\1", key )
+  ) %>% 
+  ggplot(
+    aes(
+      x = ciclo,
+      y = value, 
+      colour = key
+    )
+  ) +
+  geom_line() +
   theme_gdocs() +
-  labs(title = "Lectura de sensores por ciclo",
-       subtitle = "Ejemplo: motor e5",
-       x = "Ciclo", 
-       y = "Lectura de Sensor")  
+  labs(
+    title = "Lectura de sensores por ciclo",
+    subtitle = "Ejemplo: motor e5",
+    x = "Ciclo", 
+    y = "Lectura de Sensor",
+    colour = "Sensor"
+  )  
 ```
 
 
@@ -246,7 +355,7 @@ ggplot(sensor3, aes(x=variable, y=value)) +
 
 
 ```{r}
-sensor4 <- melt(datos, id.vars='id', measure.vars=c('sensor_5', 'sensor_6', 'sensor_15'))
+sensor4 <- melt(datos, id.vars='id', measure.vars=c('sensor_05', 'sensor_06', 'sensor_15'))
 
 ggplot(sensor4, aes(x=variable, y=value)) + 
   geom_boxplot(fill = "#6497b1") +
@@ -292,7 +401,7 @@ ggplot(sensor6, aes(x=variable, y=value)) +
 
 
 ```{r}
-sensor7 <- melt(datos, id.vars='id', measure.vars=c('sensor_1', 'sensor_2', 'sensor_7', 'sensor_12', 'sensor_17'))
+sensor7 <- melt(datos, id.vars='id', measure.vars=c('sensor_01', 'sensor_02', 'sensor_07', 'sensor_12', 'sensor_17'))
 
 ggplot(sensor7, aes(x=variable, y=value)) + 
   geom_boxplot(fill = "#6497b1") +
@@ -307,7 +416,7 @@ ggplot(sensor7, aes(x=variable, y=value)) +
 
 
 ```{r}
-sensor8 <- melt(datos, id.vars='id', measure.vars=c('sensor_3', 'sensor_4'))
+sensor8 <- melt(datos, id.vars='id', measure.vars=c('sensor_03', 'sensor_04'))
 
 ggplot(sensor8, aes(x=variable, y=value)) + 
   geom_boxplot(fill = "#6497b1") +
@@ -322,7 +431,7 @@ ggplot(sensor8, aes(x=variable, y=value)) +
 
 
 ```{r}
-sensor9 <- melt(datos, id.vars='id', measure.vars=c('sensor_8', 'sensor_13', 'sensor_18'))
+sensor9 <- melt(datos, id.vars='id', measure.vars=c('sensor_08', 'sensor_13', 'sensor_18'))
 
 ggplot(sensor9, aes(x=variable, y=value)) + 
   geom_boxplot(fill = "#6497b1") +
@@ -337,7 +446,7 @@ ggplot(sensor9, aes(x=variable, y=value)) +
 
 
 ```{r}
-sensor10 <- melt(datos, id.vars='id', measure.vars=c('sensor_9', 'sensor_14'))
+sensor10 <- melt(datos, id.vars='id', measure.vars=c('sensor_09', 'sensor_14'))
 
 ggplot(sensor10, aes(x=variable, y=value)) + 
   geom_boxplot(fill = "#6497b1") +
