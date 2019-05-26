@@ -33,20 +33,7 @@ max_ciclo <- datos %>%
 datos_agg <- max_ciclo %>%
              left_join(datos, by = c("id", "max_ciclo" = "ciclo", "delta"))
 
-tiempo <- Surv(datos_agg$max_ciclo, datos_agg$delta)
 
-xfit <- survfit(tiempo ~ 1, conf.type = "log-log")
-
-xfit_tbl <- with(xfit, tibble(time, n.risk, n.event, n.censor, surv, lower, upper))
-
-xfit_tbl %>%   
-  ggplot(aes(x = time, y = surv)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
-  geom_line(color = "steelblue", size = 1) +
-  labs(title = "Función de supervivencia",
-       x = "Ciclos",
-       y = "Probabilidad") +
-  theme(plot.title = element_text(hjust = 0.5))
 
 
 #-Extraccion de tiempos de fallo y supervivencia-
@@ -117,12 +104,49 @@ datos %>%
 
 
 xfitp <- survreg(tiempo ~ 1, dist = "lognormal")
-summary(xfit_rlognorm)
-
-xpredp<-predict(xfitp)
+#xpredp<-predict(xfitp)
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
-plot(xfit)
-lines(xpredp$fit[1,],1-pct,col=2)
-lines(xpredp$fit[1,]-2*xpredp$se.fit[1,],1-pct,col=2,lty=2)
-lines(xpredp$fit[1,]+2*xpredp$se.fit[1,],1-pct,col=2,lty=2)
+
+ajuste <- tibble(ciclo = xpredp$fit[1,],
+                 weibull = 1-pct,
+                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
+                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+
+ajuste %>% 
+  ggplot(aes(y = weibull)) +
+  geom_line(data = ajuste, aes(x = ciclo), color = "firebrick", size = 1) +
+  geom_line(data = ajuste, aes(x = inferior), color = "firebrick", size = 1, linetype = 2) +
+  geom_line(data = ajuste, aes(x = superior), color = "firebrick", size = 1, linetype = 2) +
+  labs(title = "Función de supervivencia",
+       x = "Ciclos",
+       y = "Probabilidad")
+
+
+
+
+
+
+ajuste <- tibble(ciclo = xpredp$fit[1,],
+                 ajuste = 1-pct,
+                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
+                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+
+xfit_tbl %>%   
+  ggplot(aes(x = time, y = surv)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
+  geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
+  geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
+  labs(title = "Función de supervivencia",
+       x = "Ciclos",
+       y = "Probabilidad")
+
+
+
+
+
+
+tabla$table %>% 
+  as_tibble(rownames = "coef")
