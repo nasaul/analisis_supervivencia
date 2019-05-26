@@ -47,8 +47,8 @@ datos <- read_rds(
 
 Se obtuvo la base de datos usada para la competencia de desafío de pronóstico en la Conferencia Internacional sobre pronóstico y gestión de la salud (PHM08). [1]
 
-La base consiste en múltiples series de tiempo multivariadas. Cada serie es de un motor diferente pero de un mismo tipo. Cada motor arranca con diferentes grados de desgaste inicial y variación de fabricación que es desconocido para el usuario. Este desgaste y variación se considera normal, es decir, no se considera una condición de falla. Hay tres configuraciones operativas que tienen un efecto sustancial en el rendimiento del motor, además se cuentan con medidas de 211 sensores en cada ciclo.
-El motor funciona normalmente al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo será crear la función de supervivencia para los motores donde el evento de falla será cuando el motor no pueda seguir funcionando y tenga que ser mandado a mantenimiento.
+La base consiste en múltiples series de tiempo multivariadas. Cada serie es de un motor diferente pero de un mismo tipo. Cada motor arranca con diferentes grados de desgaste inicial y variación de fabricación que es desconocido para el usuario. Este desgaste y variación se considera normal, es decir, no se considera una condición de falla. Hay tres configuraciones operativas que tienen un efecto sustancial en el rendimiento del motor, además se cuentan con medidas de 21 sensores en cada ciclo.
+El motor funciona normalmente al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo será estimar la función de supervivencia para los motores donde el evento de falla será cuando el motor no pueda seguir funcionando y tenga que ser mandado a mantenimiento, además de entender si las configuraciones y las lecturas de sensor ayudan a explicar la falla del motor. 
 
 # Análisis de Datos
 Nuestra base de datos cuenta con 75,738 registros correspondientes a 436 motores, donde cada registro corresponde a un ciclo de un motor en específico e incluye las configuraciones iniciales del ciclo así como las mediciones de los sensores.
@@ -88,7 +88,7 @@ datos %>%
 ```
 Fig. Ciclos en funcionamiento hasta censura
 
-Para el caso de motores sin censura, en la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento y en qué ciclo es mandado a mantenimiento dada una falla.
+ Para el caso de motores sin censura, en la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento y en qué ciclo es mandado a mantenimiento dada una falla.
 
 ```{r}
 datos %>% 
@@ -123,7 +123,7 @@ datos %>%
 ```
 Fig. Ciclos en funcionamiento hasta mantenimiento
 
-Nuestra base de datos también incluye 3 configuraciones que hacen los operadores al inicio de cada ciclo. Cada configuración tiene un rango distinto, la configuración uno va de 0 a 42, la dos de 0 a 0.84 y la tres de 0 a 100. La siguiente gráfica muestra de ejemplo al motor e5 y de las distintas configuraciones definidas en cada ciclo.
+ Nuestra base de datos también incluye 3 configuraciones que hacen los operadores al inicio de cada ciclo. Cada configuración tiene un rango distinto. La siguiente gráfica muestra de ejemplo al motor e5 y de las distintas configuraciones definidas en cada ciclo.
 
 ```{r}
 ggplot(datos %>% filter(id=='e5'), aes(ciclo)) +
@@ -138,7 +138,7 @@ ggplot(datos %>% filter(id=='e5'), aes(ciclo)) +
 ```
 Fig. Configuraciones por ciclo para motor e5
 
-Cada configuración tiene mediciones en la siguiente escala:
+ Cada configuración tiene mediciones en la siguiente escala:
 
 - Configuración 1: De 0 a 42.1 
 - Configuración 2: De 0 a 0.842 
@@ -160,7 +160,7 @@ ggplot(conf1, aes(x=variable, y=value)) +
 ```
 Fig. Boxplot para las configuraciones de cada ciclo
 
-Además contamos con las lecturas de 21 sensores en cada ciclo. La siguiente gráfica muestra de nuevo el ejemplo del motor e5 pero con las distintas lecturas de los sensores en cada ciclo.
+ Además contamos con las lecturas de 21 sensores en cada ciclo. La siguiente gráfica muestra de nuevo el ejemplo del motor e5 pero con las distintas lecturas de los sensores en cada ciclo.
 
 ```{r}
 datos %>% 
@@ -193,7 +193,7 @@ datos %>%
 ```
 Fig. Lectura de sensores por ciclo para motor e5
 
-En general cada sensor tiene mediciones en la siguiente escala:
+ En general cada sensor tiene mediciones en la siguiente escala:
 
 - Sensor 16: Cuenta con dos valores 0.02 y 0.03
 - Sensor 10: De 0.93 a 1.3
@@ -222,7 +222,7 @@ ggplot(sensor1, aes(x=variable, y=value)) +
 ```
 Fig. Boxplot para todas las lecturas de sensores
 
-A continuación se muestran las densidades de los valores que toman cada uno de los sensores en los datos observados. Se logra apreciar que existen sensores que tienen una densidad prácticamente idéntica como son los sensores 3 y 9.
+ A continuación se muestran las densidades de los valores que toman cada uno de los sensores en los datos observados. Se logra apreciar que existen sensores que tienen una densidad prácticamente idéntica como son los sensores 3 y 9, así como los sensores 20 y 21.
 
 ```{r, fig.height = 8}
 datos %>% 
@@ -236,7 +236,7 @@ datos %>%
        y = "Densidad")
 ```
 
-Se procede a analizar la correlación entre las mediciones de los sensores para determinar cuáles están altamente correlacionados y retirar dichas variables dentro de los modelos de vida acelerada.
+ Dado lo anterior se analizó la correlación entre las mediciones de los sensores para determinar cuáles están altamente correlacionados y retirar dichas variables dentro de los modelos de vida acelerada.
 
 ```{r, fig.height = 5}
 datos %>% 
@@ -246,15 +246,15 @@ datos %>%
   ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
 ```
 
-De la gráfica, anterior se decide dejar solamente una variable de aquellos pares que tengan una correlación arriba $0.90$. De esta forma las variables finales son:
+ Dadas las correlaciones mostradas se decide dejar solamente una variable de aquellos pares que tengan una correlación arriba $0.90$. De esta forma las variables finales son:
 
-- sensor 01
-- sensor 03
-- sensor 08
-- sensor 13
-- sensor 18
+- Sensor 01
+- Sensor 03
+- Sensor 08
+- Sensor 13
+- Sensor 18
 
-Quedando así la siguiente matriz de correlaciones:
+ Quedando así la siguiente matriz de correlaciones:
 
 ```{r}
 datos_sel <- datos %>% 
@@ -292,19 +292,14 @@ max_ciclo <- datos %>%
 
 datos_agg <- max_ciclo %>%
              left_join(datos, by = c("id", "max_ciclo" = "ciclo", "delta"))
-```
 
-Se procede a obtener el estimador Kaplan Meier para la función de supervivencia. A continuación se muestra la tabla conel resumen de los datos y la estimación no paramétrica de la función de supervivencia.
-
-```{r}
 tiempo <- Surv(datos_agg$max_ciclo, datos_agg$delta)
 
 xfit <- survfit(tiempo ~ 1, conf.type = "log-log")
 
 xfit_tbl <- with(xfit, tibble(time, n.risk, n.event, n.censor, surv, lower, upper))
 ```
-
-La función de supervivencia con el estimador de Kaplan Meier se comporta de la siguiente forma:
+ Se procede a obtener el estimador Kaplan Meier para la función de supervivencia y mostrar la estimación no paramétrica de la función de supervivencia. La función de supervivencia con el estimador de Kaplan Meier se comporta de la siguiente forma:
 
 ```{r}
 xfit_tbl %>%   
@@ -316,9 +311,9 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
-Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico.
-
-Comparación con el modelo exponencial:
+ Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico. 
+ 
+ Comparación con el modelo Exponencial: Este modelo será el que se ajuste menos a nuestra función de supervivencia
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "exponential")
@@ -342,7 +337,7 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
-Comparación con el modelo Weibull:
+ Comparación con el modelo Weibull:
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "weibull")
@@ -366,7 +361,7 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
-Comparación con el modelo lognormal:
+  Comparación con el modelo Lognormal:
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "lognormal")
@@ -390,7 +385,7 @@ xfit_tbl %>%
        y = "Probabilidad")
 ```
 
-Comparación con el modelo loglogistico:
+  Comparación con el modelo Loglogistico: 
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "loglogistic")
@@ -416,7 +411,7 @@ xfit_tbl %>%
 
 ## Modelos de vida acelerada
 
-Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo lognormal como loglogistico.
+ Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo lognormal como loglogistico.
 
 ```{r}
 xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "loglogistic")
