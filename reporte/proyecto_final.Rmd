@@ -28,9 +28,15 @@ library(ggthemes)
 library(here)
 library(TraMineR)
 library(reshape2)
-library(tidyr)
-knitr::opts_chunk$set(echo = FALSE)
-knitr::opts_chunk$set(warning = FALSE)
+library(tidyverse)
+library(ggcorrplot)
+library(survival)
+library(kableExtra)
+library(latex2exp)
+library(stargazer)
+
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3)
+
 datos <- read_rds(
   here::here("datos/datos.rds")
 ) %>% 
@@ -72,7 +78,7 @@ datos %>%
   coord_flip() +
   theme_gdocs() +
   theme(
-    axis.text.y  = element_blank(),
+    axis.text.y  = element_blank()
   ) +
   labs(
     y = "Número de Ciclos",
@@ -107,7 +113,7 @@ datos %>%
   coord_flip() +
   theme_gdocs() +
   theme(
-    axis.text.y  = element_blank(),
+    axis.text.y  = element_blank()
   ) +
   labs(
     y = "Número de Ciclos",
@@ -189,37 +195,300 @@ Fig. Lectura de sensores por ciclo para motor e5
 
 En general cada sensor tiene mediciones en la siguiente escala:
 
-Sensor 16: Cuenta con dos valores 0.02 y 0.03
-Sensor 10: De 0.93 a 1.3
-Sensores 5, 6 y 15: De 3.91 a 21.61
-Sensores 11, 20 y 21: De 6.124 a 48.39
-Sensor 19: Cuenta con sólo dos valores 84.93 y 100
-Sensores 1, 2, 7 y 12:  De 129.2 a 644.4
-Sensor 17: Con valores enteros entre 303 y 398
-Sensores 3 y 4: De 1029 a 1615
-Sensores 8 y 13: De 1915 a 2391
-Sensor 18: Con valores enteros entre 1915 y 2388
-Sensores 9 y 14: De 7852 a 9217
+- Sensor 16: Cuenta con dos valores 0.02 y 0.03
+- Sensor 10: De 0.93 a 1.3
+- Sensores 5, 6 y 15: De 3.91 a 21.61
+- Sensores 11, 20 y 21: De 6.124 a 48.39
+- Sensor 19: Cuenta con sólo dos valores 84.93 y 100
+- Sensores 1, 2, 7 y 12:  De 129.2 a 644.4
+- Sensor 17: Con valores enteros entre 303 y 398
+- Sensores 3 y 4: De 1029 a 1615
+- Sensores 8 y 13: De 1915 a 2391
+- Sensor 18: Con valores enteros entre 1915 y 2388
+- Sensores 9 y 14: De 7852 a 9217
 
-```{r}
+```{r, fig.height = 8}
 
 sensor1 <- melt(datos, id.vars='id', measure.vars=colnames(datos)[6:26])
 
 ggplot(sensor1, aes(x=variable, y=value)) + 
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
-  coord_flip() +
   labs(title = "Medición de sensores",
        subtitle = "Todos los ciclos",
        x = "Sensor", 
-       y = "Lectura del Sensor")
-
+       y = "Lectura del Sensor") +
+  theme(axis.text.x = element_text(angle = 90))
 ```
 Fig. Boxplot para todas las lecturas de sensores
 
+A continuación se muestran las densidades de los valores que toman cada uno de los sensores en los datos observados. Se logra apreciar que existen sensores que tienen una densidad prácticamente idéntica como son los sensores 3 y 9.
+
+```{r, fig.height = 8}
+datos %>% 
+  select(-starts_with("conf")) %>% 
+  gather(key = variable, value = medicion, starts_with("sensor")) %>% 
+  ggplot(aes(x = medicion)) +
+  geom_density() +
+  facet_wrap(vars(variable), scales = "free", ncol = 3) +
+  labs(title = "Distribuciones para los parámetros de configuración",
+       x = "Medición",
+       y = "Densidad")
+```
+
+Se procede a analizar la correlación entre las mediciones de los sensores para determinar cuáles están altamente correlacionados y retirar dichas variables dentro de los modelos de vida acelerada.
+
+```{r, fig.height = 5}
+datos %>% 
+  select(starts_with("sensor")) %>% 
+  as.matrix() %>% 
+  cor() %>% 
+  ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
+```
+
+De la gráfica, anterior se decide dejar solamente una variable de aquellos pares que tengan una correlación arriba $0.90$. De esta forma las variables finales son:
+
+- sensor 01
+- sensor 03
+- sensor 08
+- sensor 13
+- sensor 18
+
+Quedando así la siguiente matriz de correlaciones:
+
+```{r}
+datos_sel <- datos %>% 
+             select(-c(sensor_02, sensor_04, sensor_05, sensor_06, sensor_07, sensor_09, sensor_10,
+                       sensor_11, sensor_12, sensor_14, sensor_15, sensor_16, sensor_17, sensor_19,
+                       sensor_20, sensor_21))
+
+datos_sel %>% 
+  select(starts_with("sensor")) %>% 
+  as.matrix() %>% 
+  cor() %>% 
+  ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
+```
+
+# Análisis inferencial
+
+## Estimador Kaplan Meier
+
+```{r}
+datos_norm <- datos_sel %>%
+              gather(key = variable, value = medicion, c(starts_with("conf"), starts_with("sensor"))) %>% 
+              group_by(variable) %>% 
+              mutate(media = mean(medicion),
+                     desv_s = sd(medicion),
+                     medicion = (medicion - media)/desv_s) %>%
+              ungroup() %>% 
+              select(-c(media, desv_s)) %>% 
+              spread(key = variable, value = medicion)
+
+max_ciclo <- datos %>% 
+              group_by(id) %>% 
+              summarise(max_ciclo = max(ciclo),
+                        delta = max(delta)) %>% 
+              arrange(max_ciclo, delta)
+
+datos_agg <- max_ciclo %>%
+             left_join(datos, by = c("id", "max_ciclo" = "ciclo", "delta"))
+```
+
+Se procede a obtener el estimador Kaplan Meier para la función de supervivencia. A continuación se muestra la tabla conel resumen de los datos y la estimación no paramétrica de la función de supervivencia.
+
+```{r}
+tiempo <- Surv(datos_agg$max_ciclo, datos_agg$delta)
+
+xfit <- survfit(tiempo ~ 1, conf.type = "log-log")
+
+xfit_tbl <- with(xfit, tibble(time, n.risk, n.event, n.censor, surv, lower, upper))
+```
+
+La función de supervivencia con el estimador de Kaplan Meier se comporta de la siguiente forma:
+
+```{r}
+xfit_tbl %>%   
+  ggplot(aes(x = time, y = surv)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1) +
+  labs(title = "Función de supervivencia",
+       x = "Ciclos",
+       y = "Probabilidad")
+```
+
+Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico.
+
+Comparación con el modelo exponencial:
+
+```{r}
+xfitp <- survreg(tiempo ~ 1, dist = "exponential")
+pct <- 1:98/100
+xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+
+ajuste <- tibble(ciclo = xpredp$fit[1,],
+                 ajuste = 1-pct,
+                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
+                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+
+xfit_tbl %>%   
+  ggplot(aes(x = time, y = surv)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
+  geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
+  geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
+  labs(title = "Función de supervivencia",
+       x = "Ciclos",
+       y = "Probabilidad")
+```
+
+Comparación con el modelo Weibull:
+
+```{r}
+xfitp <- survreg(tiempo ~ 1, dist = "weibull")
+pct <- 1:98/100
+xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+
+ajuste <- tibble(ciclo = xpredp$fit[1,],
+                 ajuste = 1-pct,
+                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
+                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+
+xfit_tbl %>%   
+  ggplot(aes(x = time, y = surv)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
+  geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
+  geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
+  labs(title = "Función de supervivencia",
+       x = "Ciclos",
+       y = "Probabilidad")
+```
+
+Comparación con el modelo lognormal:
+
+```{r}
+xfitp <- survreg(tiempo ~ 1, dist = "lognormal")
+pct <- 1:98/100
+xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+
+ajuste <- tibble(ciclo = xpredp$fit[1,],
+                 ajuste = 1-pct,
+                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
+                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+
+xfit_tbl %>%   
+  ggplot(aes(x = time, y = surv)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
+  geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
+  geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
+  labs(title = "Función de supervivencia",
+       x = "Ciclos",
+       y = "Probabilidad")
+```
+
+Comparación con el modelo loglogistico:
+
+```{r}
+xfitp <- survreg(tiempo ~ 1, dist = "loglogistic")
+pct <- 1:98/100
+xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+
+ajuste <- tibble(ciclo = xpredp$fit[1,],
+                 ajuste = 1-pct,
+                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
+                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+
+xfit_tbl %>%   
+  ggplot(aes(x = time, y = surv)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
+  geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
+  geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
+  labs(title = "Función de supervivencia",
+       x = "Ciclos",
+       y = "Probabilidad")
+```
+
+## Modelos de vida acelerada
+
+Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo lognormal como loglogistico.
+
+```{r}
+xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "loglogistic")
+tabla <- summary(xfit_rloglog1)
+
+tabla$table %>% 
+  as_tibble(rownames = "coef") %>% 
+  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+  row_spec(0, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
+```
+
+```{r}
+xfit_rloglog2 <- survreg(tiempo ~ 
+                     datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18,
+                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
+                    dist = "loglogistic")
+
+tabla <- summary(xfit_rloglog2)
+
+tabla$table %>% 
+  as_tibble(rownames = "coef") %>% 
+  mutate(coef = c("Intercepto", paste("Sensor", c("01", "03", "08", "13", "18")), "Log(scale)")) %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+  row_spec(0, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
+```
+
+```{r}
+xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "lognormal")
+tabla <- summary(xfit_rlognorm1)
+
+tabla$table %>% 
+  as_tibble(rownames = "coef") %>% 
+  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+  row_spec(0, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
+```
+
+```{r}
+xfit_rlognorm2 <- survreg(tiempo ~ 
+                     datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18,
+                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
+                    dist = "lognormal")
+
+tabla <- summary(xfit_rlognorm2)
+
+tabla$table %>% 
+  as_tibble(rownames = "coef") %>% 
+  mutate(coef = c("Intercepto", paste("Sensor", c("01", "03", "08", "13", "18")), "Log(scale)")) %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+  row_spec(0, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
+```
 
 
-CORRELACIÓN
 
 # Bibliografía
 
@@ -252,11 +521,13 @@ datos[duplicated(datos), ]
 ```
 
 Nuestro archivo cuenta con 29 columnas:
+
 - ID: El identificador único por motor
 - Ciclo: Indica de qué ciclo son las leturas pertenecientes a la motor indicada en el campo "ID"
 - Conf_[n]: Con n = 1,2,3. Configuración hecha por el operador al inicio del ciclo de la motor
 - Sensor_[m]: Con m = 1,2,...,21. Lectura de sensores
 - Delta: Indica si los registros contienen censura (0) o no (1)
+
 ```{r}
 glimpse(datos)
 ```
@@ -384,7 +655,7 @@ ggplot(conf2, aes(x=variable, y=value)) +
 ```
 
 
-Sensores
+### Sensores
 
 ```{r}
 summary(datos[6:26])
@@ -572,15 +843,18 @@ ggplot(sensor10, aes(x=variable, y=value)) +
 
 ```
 
+## Tabla de Kaplan Meier
 
-
-
-
-
-
-
-
-
-
+```{r}
+xfit_tbl %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Tabla del estimador Kaplan Meier",
+               col.names = c("Tiempo", "Riesgo", "Eventos", "Censurado",
+                             "Supervivencia", "Inferior", "Superior")) %>% 
+  row_spec(0, align = "c") %>% 
+  add_header_above(c("", "", "", "", "", "Intervalo de confianza" = 2)) %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
+```
 
 
