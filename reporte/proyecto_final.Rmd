@@ -45,10 +45,13 @@ datos <- read_rds(
 
 # Introducción 
 
-Se obtuvo la base de datos usada para la competencia de desafío de pronóstico en la Conferencia Internacional sobre pronóstico y gestión de la salud (PHM08). [1]
+La base de datos se obtuvo en la competencia de desafío de pronóstico en la Conferencia Internacional sobre pronóstico y gestión de la salud \footnote{https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/}. El objetivo de la competencia era estimar en qué momento y bajo qué condiciones un motor falla. 
 
-La base consiste en múltiples series de tiempo multivariadas. Cada serie es de un motor diferente pero de un mismo tipo. Cada motor arranca con diferentes grados de desgaste inicial y variación de fabricación que es desconocido para el usuario. Este desgaste y variación se considera normal, es decir, no se considera una condición de falla. Hay tres configuraciones operativas que tienen un efecto sustancial en el rendimiento del motor, además se cuentan con medidas de 21 sensores en cada ciclo.
-El motor funciona normalmente al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo será estimar la función de supervivencia para los motores donde el evento de falla será cuando el motor no pueda seguir funcionando y tenga que ser mandado a mantenimiento, además de entender si las configuraciones y las lecturas de sensor ayudan a explicar la falla del motor. 
+La base de datos contiene información acerca de los motores en cada unidad de tiempo medida. La última unidad medida representa cuando el motor se le dio mantemiento o hasta la última unidad medida de tiempo para el motor (datos censurados). Para representar que cada motor inicia con diferentes grados de desgaste inicial y variación de fabricación se tienen tres diferentes variables de configuración inicial y 21 medidas de sensores en cada ciclo.
+
+El motor funciona de manera regular al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo es estimar la función de supervivencia para el tiempo de fallo de los motores y ver en cuanto afectan las distintas mediciones de los sensores sobre el tiempo de fallo. 
+
+
 
 # Análisis de Datos
 Nuestra base de datos cuenta con 75,738 registros correspondientes a 436 motores, donde cada registro corresponde a un ciclo de un motor en específico e incluye las configuraciones iniciales del ciclo así como las mediciones de los sensores.
@@ -86,7 +89,7 @@ datos %>%
     title = "Datos sin censura"
   )
 ```
-Fig. Ciclos en funcionamiento hasta censura
+Fig. Ciclos en funcionamiento hasta mantenimiento
 
  Para el caso de motores sin censura, en la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento y en qué ciclo es mandado a mantenimiento dada una falla.
 
@@ -121,7 +124,7 @@ datos %>%
     title = "Datos con censura"
   )
 ```
-Fig. Ciclos en funcionamiento hasta mantenimiento
+Fig. Ciclos en funcionamiento hasta censura
 
  Nuestra base de datos también incluye 3 configuraciones que hacen los operadores al inicio de cada ciclo. Cada configuración tiene un rango distinto. La siguiente gráfica muestra de ejemplo al motor e5 y de las distintas configuraciones definidas en cada ciclo.
 
@@ -485,9 +488,6 @@ tabla$table %>%
 
 
 
-# Bibliografía
-
- [1] https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/
 
  
 
