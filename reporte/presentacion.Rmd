@@ -37,6 +37,8 @@ library(kableExtra)
 library(latex2exp)
 library(stargazer)
 
+theme_set(theme_gdocs() + theme(plot.title = element_text(hjust = 0.5)))
+
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3)
 
 datos <- read_rds(
@@ -337,9 +339,10 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
   geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
+  labs(title = "Función de supervivencia KM y exponencial",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ## Comparación con modelos paramétricos
@@ -363,9 +366,10 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
   geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
+  labs(title = "Función de supervivencia KM y Weibull",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ## Comparación con modelos paramétricos
@@ -389,9 +393,11 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
   geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
+  labs(title = "Función de supervivencia KM y lognormal",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  xlim(0, 400) +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ## Comparación con modelos paramétricos
@@ -415,9 +421,11 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
   geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
+  labs(title = "Función de supervivencia KM y loglogistica",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  xlim(0, 400) +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ## Modelos de vida acelerada

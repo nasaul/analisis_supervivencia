@@ -35,6 +35,8 @@ library(kableExtra)
 library(latex2exp)
 library(stargazer)
 
+theme_set(theme_gdocs())
+
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3)
 
 datos <- read_rds(
@@ -50,7 +52,16 @@ Se obtuvo la base de datos usada para la competencia de desafío de pronóstico 
 La base consiste en múltiples series de tiempo multivariadas. Cada serie es de un motor diferente pero de un mismo tipo. Cada motor arranca con diferentes grados de desgaste inicial y variación de fabricación que es desconocido para el usuario. Este desgaste y variación se considera normal, es decir, no se considera una condición de falla. Hay tres configuraciones operativas que tienen un efecto sustancial en el rendimiento del motor, además se cuentan con medidas de 21 sensores en cada ciclo.
 El motor funciona normalmente al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo será estimar la función de supervivencia para los motores donde el evento de falla será cuando el motor no pueda seguir funcionando y tenga que ser mandado a mantenimiento, además de entender si las configuraciones y las lecturas de sensor ayudan a explicar la falla del motor. 
 
+## Objetivos
+
+Los objetivos de este trabajo son:
+
+1. Estimar la función de supervivencia para los motores donde el evento de falla será cuando el motor no pueda seguir funcionando y tenga que ser mandado a mantenimiento.
+2. Entender si las configuraciones y las lecturas de sensor ayudan a explicar la falla del motor.
+3. Construir un modelo predictivo que permita estimar el ciclo previo a la falla.
+
 # Análisis de Datos
+
 Nuestra base de datos cuenta con 75,738 registros correspondientes a 436 motores, donde cada registro corresponde a un ciclo de un motor en específico e incluye las configuraciones iniciales del ciclo así como las mediciones de los sensores.
 
 Contamos con 50% de censura por la derecha, donde si el motor no tiene censura su último registro será del último ciclo antes de mantenimiento. En la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento o en qué ciclo se detuvieron las mediciones, es decir en qué ciclo la censura comenzó.
@@ -77,7 +88,7 @@ datos %>%
   ) +
   coord_flip() +
   theme_gdocs() +
-  theme(
+  theme(plot.title = element_text(hjust = 0.5),
     axis.text.y  = element_blank()
   ) +
   labs(
@@ -112,7 +123,7 @@ datos %>%
   ) +
   coord_flip() +
   theme_gdocs() +
-  theme(
+  theme(plot.title = element_text(hjust = 0.5),
     axis.text.y  = element_blank()
   ) +
   labs(
@@ -134,7 +145,8 @@ ggplot(datos %>% filter(id=='e5'), aes(ciclo)) +
   labs(title = "Configuraciones previas al ciclo",
        subtitle = "Ejemplo: motor e5",
        x = "Ciclo", 
-       y = "Configuración")  
+       y = "Configuración") +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 Fig. Configuraciones por ciclo para motor e5
 
@@ -155,14 +167,15 @@ ggplot(conf1, aes(x=variable, y=value)) +
   labs(title = "Configuración previa al ciclo",
        subtitle = "Todos los ciclos",
        x = "Tipo de configuración", 
-       y = "Valor establecido para la configuración")
+       y = "Valor establecido para la configuración") +
+  theme(plot.title = element_text(hjust = 0.5))
 
 ```
 Fig. Boxplot para las configuraciones de cada ciclo
 
  Además contamos con las lecturas de 21 sensores en cada ciclo. La siguiente gráfica muestra de nuevo el ejemplo del motor e5 pero con las distintas lecturas de los sensores en cada ciclo.
 
-```{r}
+```{r, fig.height = 6}
 datos %>% 
   filter(id == "e5") %>% 
   select(-c(id, starts_with("conf"), delta)) %>% 
@@ -189,7 +202,10 @@ datos %>%
     x = "Ciclo", 
     y = "Lectura de Sensor",
     colour = "Sensor"
-  )  
+  ) +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  guides(col = guide_legend(ncol = 6))
 ```
 Fig. Lectura de sensores por ciclo para motor e5
 
@@ -218,7 +234,8 @@ ggplot(sensor1, aes(x=variable, y=value)) +
        subtitle = "Todos los ciclos",
        x = "Sensor", 
        y = "Lectura del Sensor") +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90),
+        plot.title = element_text(hjust = 0.5))
 ```
 Fig. Boxplot para todas las lecturas de sensores
 
@@ -233,7 +250,8 @@ datos %>%
   facet_wrap(vars(variable), scales = "free", ncol = 3) +
   labs(title = "Distribuciones para los parámetros de configuración",
        x = "Medición",
-       y = "Densidad")
+       y = "Densidad") +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
  Dado lo anterior se analizó la correlación entre las mediciones de los sensores para determinar cuáles están altamente correlacionados y retirar dichas variables dentro de los modelos de vida acelerada.
@@ -299,6 +317,7 @@ xfit <- survfit(tiempo ~ 1, conf.type = "log-log")
 
 xfit_tbl <- with(xfit, tibble(time, n.risk, n.event, n.censor, surv, lower, upper))
 ```
+ 
  Se procede a obtener el estimador Kaplan Meier para la función de supervivencia y mostrar la estimación no paramétrica de la función de supervivencia. La función de supervivencia con el estimador de Kaplan Meier se comporta de la siguiente forma:
 
 ```{r}
@@ -308,17 +327,46 @@ xfit_tbl %>%
   geom_line(color = "steelblue", size = 1) +
   labs(title = "Función de supervivencia",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Una vez contamos con la estimación de la función de supervivencia, podemos obtener valores como son los cuantiles:
+
+```{r}
+q25 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - 0.25),
+                              conf.level = 0.95, conftype = "log-log")
+q50 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - 0.50),
+                              conf.level = 0.95, conftype = "log-log")
+q75 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - 0.75),
+                              conf.level = 0.95, conftype = "log-log")
+
+quantiles_km <- c(q25$quantities[,3], q50$quantities[,3], q75$quantities[,3])
+quantiles_km_lower <- c(q25$quantities[,4], q50$quantities[,4], q75$quantities[,4])
+quantiles_km_upper <- c(q25$quantities[,5], q50$quantities[,5], q75$quantities[,5])
+quantiles_km <- tibble(q = c("0.25", "0.5", "0.75"),
+                       quant = quantiles_km,
+                       q_lower = quantiles_km_lower,
+                       q_upper = quantiles_km_upper)
+quantiles_km %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Tabla de cuantiles Kaplan-Meier",
+               col.names = c("Cuantil", "Valor", "Inferior", "Superior")) %>% 
+  row_spec(0, align = "c") %>% 
+  add_header_above(c("", "", "Intervalo de confianza" = 2)) %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
  Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico. 
  
- Comparación con el modelo Exponencial: Este modelo será el que se ajuste menos a nuestra función de supervivencia
+### Comparación con el modelo Exponencial
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "exponential")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+exp_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
 
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
@@ -332,17 +380,21 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
   geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
+  labs(title = "Función de supervivencia KM y exponencial",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
- Comparación con el modelo Weibull:
+Se observa que el estimador Kaplan-Meier no se ajsuta de forma adecuada a un modelo paramétrico exponencial.
+
+### Comparación con el modelo Weibull:
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "weibull")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+wei_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
 
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
@@ -356,17 +408,50 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
   geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
+  labs(title = "Función de supervivencia KM y Weibull",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
-  Comparación con el modelo Lognormal:
+Se observa que el estimador Kaplan-Meier se ajsuta de forma adecuada a un modelo paramétrico Weibull. Sin embargo, se aprecia que al inicio el modelo subestima la función de supervivencia y despúes el cuantil $50\%$ el modelo tiende a sobreestimar la función de supervivencia.
+
+### Comparación con el modelo Loglogistico: 
+
+```{r}
+xfitp <- survreg(tiempo ~ 1, dist = "loglogistic")
+pct <- 1:98/100
+xpredp<-predict(xfitp, type="quantile", p=pct, se=TRUE)
+llo_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
+
+ajuste <- tibble(ciclo = xpredp$fit[1,],
+                 ajuste = 1-pct,
+                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
+                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+
+xfit_tbl %>%   
+  ggplot(aes(x = time, y = surv)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1) +
+  geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
+  geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
+  geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
+  labs(title = "Función de supervivencia KM y loglogistica",
+       x = "Ciclos",
+       y = "Probabilidad") +
+  xlim(0, 400) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Se observa que el estimador Kaplan-Meier se ajsuta de forma adecuada a un modelo paramétrico loglogistico.
+
+### Comparación con el modelo Lognormal:
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "lognormal")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+lno_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
 
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
@@ -380,38 +465,68 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
   geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
+  labs(title = "Función de supervivencia KM y lognormal",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Probabilidad") +
+  xlim(0, 400) +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
-  Comparación con el modelo Loglogistico: 
+Se observa que el estimador Kaplan-Meier se ajsuta de forma adecuada a un modelo paramétrico lognormal.
+
+### Cuantiles
+
+De las gráficas previas se logra apresiar que los modelos lognormal y loglogistico son los que mejor aproximan al estimador Kaplan-Meier, aunque el modelo Weibull también tiene una aproximación apropiada.
+
+Comparando los cuantiles de los modelos presentados previamente se otiene la siguiente tabla:
 
 ```{r}
-xfitp <- survreg(tiempo ~ 1, dist = "loglogistic")
-pct <- 1:98/100
-xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
+quantiles <- matrix(c(exp_q$fit[1,],
+                      wei_q$fit[1,],
+                      lno_q$fit[1,],
+                      llo_q$fit[1,]),
+                      ncol = 3, byrow = TRUE)
 
-ajuste <- tibble(ciclo = xpredp$fit[1,],
-                 ajuste = 1-pct,
-                 inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
-                 superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
+colnames(quantiles) <- c("0.25", "0.5", "0.75")
+quantiles <- as_tibble(quantiles) %>% 
+              mutate(modelo = c("Exponencial", "Weibull", "Lognormal", "Loglogistico")) %>% 
+              select(modelo, starts_with("0"))
 
-xfit_tbl %>%   
-  ggplot(aes(x = time, y = surv)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
-  geom_line(color = "steelblue", size = 1) +
-  geom_line(data = ajuste, aes(x = ciclo, y = ajuste), color = "firebrick", size = 1) +
-  geom_line(data = ajuste, aes(x = inferior, y = ajuste), color = "firebrick", linetype = 2) +
-  geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
-  labs(title = "Función de supervivencia",
-       x = "Ciclos",
-       y = "Probabilidad")
+quantiles %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Tabla de cuantiles",
+               col.names = c("Modelo", "0.25", "0.25", "0.75")) %>% 
+  row_spec(0, align = "c") %>% 
+  add_header_above(c("", "Cuantiles" = 3)) %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
+
+Como puede apreciarse, los quantiles de los modelos lognormal y loglogistico son muy similares, lo cual es consistente con la osbervación previa de que las gráficas son muy similares.
+
+Comparando los quantiles de las distribuciones paramétricas respecto a los quantiles obtenidos con el estimador Kaplan-Meier, se observa el siguiente comportamiento:
+
+```{r}
+q_tbl <- quantiles %>% 
+  gather(key = q, value = valor, -modelo)
+
+set.seed(42)
+quantiles_km %>% 
+  ggplot(aes(x = quant, y = reorder(q, -quant))) +
+  geom_jitter(height = 0.1, width = 0) +
+  geom_errorbarh(aes(xmin = q_lower, xmax = q_upper), height = .2, size = 1) +
+  geom_jitter(data = q_tbl, aes(x = valor, y = q, color = modelo), height = 0.1, width = 0) +
+  labs(title = "Comparación de cuantiles 25%, 50% y 75%",
+       x = "Valor",
+       y = "Cuantil") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+En este caso, se observa que incluso los cuantiles de la distribución Weibull caen dentro del intervalo de confianza para el estimador Kaplan-Meier.
 
 ## Modelos de vida acelerada
 
- Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo lognormal como loglogistico.
+ Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo loglogistico como lognormal. Por tal motivo se procede a ajustar modelos de regresión para ambas distribuciones.
 
 ```{r}
 xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "loglogistic")
@@ -427,6 +542,8 @@ tabla$table %>%
   row_spec(0, align = "c") %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
+
+En este caso, se observa que ningún coeficiente es significativo a un nivel de $\alpha = 0.05$. Por lo que los valores de configuración inicial no tienen un efecto en la supervivencia de las máquinas.
 
 ```{r}
 xfit_rloglog2 <- survreg(tiempo ~ 
@@ -448,6 +565,12 @@ tabla$table %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
+Notamos que en este modelo de regresión se tiene un coeficiente significativos a un nivel de $\alpha = 0.5$.
+
+- Sensor 18
+
+por lo que los parámetros de este sensore ayuda a explicar la supervivencia de las máquinas.
+
 ```{r}
 xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "lognormal")
 tabla <- summary(xfit_rlognorm1)
@@ -462,6 +585,8 @@ tabla$table %>%
   row_spec(0, align = "c") %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
+
+En este caso, se observa que ningún coeficiente es significativo a un nivel de $\alpha = 0.05$. Por lo que los valores de configuración inicial no tienen un efecto en la supervivencia de las máquinas.
 
 ```{r}
 xfit_rlognorm2 <- survreg(tiempo ~ 
@@ -483,7 +608,36 @@ tabla$table %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
+Notamos que en este modelo de regresión se tienen tres coeficientes significativos a un nivel de $\alpha = 0.5$.
 
+- Sensor 03
+- Sensor 08
+- Sensor 18
+
+por lo que los parámetros de dichos sensores ayudan a explicar la supervivencia de las máquinas.
+
+Se procede a generar un modelo de regresión con estos parámetros:
+
+```{r}
+xfit_rlognorm2 <- survreg(tiempo ~ 
+                     datos_agg$sensor_03 + datos_agg$sensor_08 + datos_agg$sensor_18,
+                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
+                    dist = "lognormal")
+
+tabla <- summary(xfit_rlognorm2)
+
+tabla$table %>% 
+  as_tibble(rownames = "coef") %>% 
+  mutate(coef = c("Intercepto", paste("Sensor", c("03", "08", "18")), "Log(scale)")) %>% 
+  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+  row_spec(0, align = "c") %>%
+  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
+```
+
+Con lo cual obtenemos un modelo completamente específicado
 
 # Bibliografía
 
