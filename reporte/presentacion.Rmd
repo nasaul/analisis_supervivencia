@@ -39,7 +39,7 @@ library(stargazer)
 
 theme_set(theme_gdocs() + theme(plot.title = element_text(hjust = 0.5)))
 
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3, cache = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 5, cache = TRUE)
 
 datos <- read_rds(
   here::here("datos/datos.rds")
@@ -348,7 +348,8 @@ quantiles_km %>%
                caption = "Tabla de cuantiles Kaplan-Meier",
                col.names = c("Cuantil", "Valor", "Inferior", "Superior")) %>%
   row_spec(0, align = "c") %>%
-  add_header_above(c("", "", "Intervalo de confianza" = 2))
+  add_header_above(c("", "", "Intervalo de confianza" = 2)) %>% 
+  kable_styling(font_size = 10)
 ```
 
 ## Comparación con modelos paramétricos
@@ -480,7 +481,8 @@ quantiles %>%
                caption = "Tabla de cuantiles",
                col.names = c("Modelo", "0.25", "0.25", "0.75")) %>%
   row_spec(0, align = "c") %>%
-  add_header_above(c("", "Cuantiles" = 3))
+  add_header_above(c("", "Cuantiles" = 3)) %>% 
+  kable_styling(font_size = 10)
 ```
 
 ## Cuantiles
@@ -526,7 +528,8 @@ tabla$table %>%
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
@@ -549,7 +552,8 @@ tabla$table %>%
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
@@ -574,7 +578,8 @@ tabla$table %>%
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
@@ -596,7 +601,8 @@ tabla$table %>%
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
