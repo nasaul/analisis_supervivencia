@@ -640,11 +640,7 @@ tabla$table %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
-Con lo cual obtenemos un modelo completamente específicado
-
-
- 
-
+Con lo cual obtenemos un modelo completamente específicado.
 
 # Apéndice
 

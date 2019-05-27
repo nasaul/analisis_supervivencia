@@ -1,9 +1,11 @@
 library(survival)
 # library(KMsurv)
 # library(actuar)
-# library(BGPhazard)
+#library(BGPhazard)
 # library(rmutil)
 library(tidyverse)
+
+survival::q
 
 datos_path <- "../datos/"
 
@@ -132,7 +134,7 @@ ajuste <- tibble(ciclo = xpredp$fit[1,],
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
                  superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
 
-xfit_tbl %>%   
+xfit_tbl %>%
   ggplot(aes(x = time, y = surv)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
   geom_line(color = "steelblue", size = 1) +
@@ -148,5 +150,95 @@ xfit_tbl %>%
 
 
 
-tabla$table %>% 
-  as_tibble(rownames = "coef")
+xfit_tbl %>%
+  mutate(h.hat = -log(surv),
+         h.hat.lower = -log(lower),
+         h.hat.upper = -log(upper)) %>% tail()
+  ggplot(aes(x = time, y = h.hat)) +
+  geom_ribbon(aes(ymin = h.hat.lower, ymax = h.hat.upper), alpha = 0.2) +
+  geom_line(color = "steelblue", size = 1)
+
+  
+  
+biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = 0.75, conf.level = 0.95, 
+    conftype = "log-log")
+
+
+
+q_tbl <- quantiles %>% 
+  gather(key = q, value = valor, -modelo)
+
+q_tbl %>% 
+  ggplot(aes(x = valor, y = q, color = modelo)) +
+  geom_point()
+
+set.seed(42)
+quantiles_km %>% 
+  ggplot(aes(x = quant, y = reorder(q, -quant))) +
+  geom_jitter(height = 0.1, width = 0) +
+  geom_errorbarh(aes(xmin = q_lower, xmax = q_upper), height = .2, size = 1) +
+  geom_jitter(data = q_tbl, aes(x = valor, y = q, color = modelo), height = 0.1, width = 0) +
+  labs(title = "Comparación de cuantiles 25%, 50% y 75%",
+       x = "Valor",
+       y = "Cuantil") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+
+quantiles_km_tbl <- function(q) {
+  qkm <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - q),
+                              conf.level = 0.95, conftype = "log-log")
+
+  quantiles_km <- qkm$quantities[,3]
+  quantiles_km_lower <- qkm$quantities[,4]
+  quantiles_km_upper <- qkm$quantities[,5]
+  
+  quantiles_km <- tibble(q = as.character(q),
+                         quant = quantiles_km,
+                         q_lower = quantiles_km_lower,
+                         q_upper = quantiles_km_upper)
+  return(quantiles_km)
+}
+
+quantiles_km <- seq(from = 0, to = 1, by = 0.01) %>% 
+                map_dfr(quantiles_km_tbl)
+
+quantiles_km %>% 
+  ggplot(aes(sample = quant)) +
+  stat_qq(distribution = stats::qexp, color = "steelblue") +
+  stat_qq_line(distribution = stats::qexp, color = "firebrick", size = 1,
+               linetype = 2, fullrange = TRUE) +
+  labs(title = "Gráfica Q-Q, exponencial y KM",
+       x = "Exponencial",
+       y = "Kamplan-Meier")
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+xfit_rlognorm2 <- survreg(tiempo ~ 
+                     datos_agg$sensor_03 + datos_agg$sensor_08 + datos_agg$sensor_18,
+                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
+                    dist = "lognormal")
+
+tabla <- summary(xfit_rlognorm2)
+
+#Lognormal
+sln<-function(t,x,mu0,b,theta){
+  out<-1-pnorm((log(t)-mu0+sum(x*theta))/b)
+  out
+}

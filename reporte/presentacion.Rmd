@@ -39,7 +39,7 @@ library(stargazer)
 
 theme_set(theme_gdocs() + theme(plot.title = element_text(hjust = 0.5)))
 
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 4)
 
 datos <- read_rds(
   here::here("datos/datos.rds")
@@ -345,6 +345,7 @@ xfit_tbl %>%
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
+
 ## Comparación con modelos paramétricos
 
 Comparación con el modelo Weibull:
@@ -442,13 +443,16 @@ tabla <- summary(xfit_rloglog1)
 
 tabla$table %>% 
   as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
+  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 3", "Log(scale)")) %>% 
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
 ```
+
+Log-verosimilitud del modelo `r tabla$loglik[2]`
 
 ## Modelo loglogistico
 
@@ -468,8 +472,11 @@ tabla$table %>%
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
 ```
+
+Log-verosimilitud del modelo `r tabla$loglik[2]`
 
 ## Modelo lognormal
 
@@ -479,13 +486,16 @@ tabla <- summary(xfit_rlognorm1)
 
 tabla$table %>% 
   as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
+  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 3", "Log(scale)")) %>% 
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
 ```
+
+Log-verosimilitud del modelo `r tabla$loglik[2]`
 
 ## Modelo lognormal
 
@@ -505,8 +515,35 @@ tabla$table %>%
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
                col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
+  row_spec(0, align = "c") %>% 
+  kable_styling(font_size = 10)
+
 ```
+
+Log-verosimilitud del modelo `r tabla$loglik[2]`
+
+## Modelo lognormal
+
+```{r}
+xfit_rlognorm2 <- survreg(tiempo ~ 
+                     datos_agg$sensor_03 + datos_agg$sensor_08 + datos_agg$sensor_18,
+                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
+                    dist = "lognormal")
+
+tabla <- summary(xfit_rlognorm2)
+
+tabla$table %>% 
+  as_tibble(rownames = "coef") %>% 
+  mutate(coef = c("Intercepto", paste("Sensor", c("03", "08", "18")), "Log(scale)")) %>% 
+  knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+  row_spec(0, align = "c") %>%
+  kable_styling(font_size = 10)
+```
+
+Log-verosimilitud del modelo `r tabla$loglik[2]`
 
 # Conclusiones
 
@@ -517,4 +554,5 @@ Aquí van las conclusiones
 # Bibliografía
 
 ## Bibliografía
+
  [1] https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/
