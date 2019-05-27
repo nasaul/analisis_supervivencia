@@ -1,14 +1,14 @@
 ---
 title:    "Proyecto Final Análisis de Supervivencia"
 subtitle: "Análisis de Supervivencia para fallas de motor"
-author:  
+author:
   - "Víctor Samayoa \t- 175750"
   - "Saúl Caballero \t- 133930"
   - "Delia Del Águila \t- 167188"
-output: 
+output:
   pdf_document:
     number_sections: true
-    toc_depth: 2
+    toc_depth: 3
 fontsize: 12pt
 header-includes:
   - \usepackage[spanish]{babel}
@@ -35,25 +35,22 @@ library(kableExtra)
 library(latex2exp)
 library(stargazer)
 
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3, cache = TRUE)
 theme_set(theme_gdocs())
-
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3)
 
 datos <- read_rds(
   here::here("datos/datos.rds")
-) %>% 
+) %>%
   select("id":"sensor_21", "delta")
 ```
 
-# Introducción 
+# Introducción
 
-La base de datos se obtuvo en la competencia de desafío de pronóstico en la Conferencia Internacional sobre pronóstico y gestión de la salud \footnote{https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/}. El objetivo de la competencia era estimar en qué momento y bajo qué condiciones un motor falla. 
+La base de datos se obtuvo en la competencia de desafío de pronóstico en la Conferencia Internacional sobre pronóstico y gestión de la salud \footnote{https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/}. El objetivo de la competencia era estimar en qué momento y bajo qué condiciones un motor falla.
 
 La base de datos contiene información acerca de los motores en cada unidad de tiempo medida. La última unidad medida representa cuando el motor se le dio mantemiento o hasta la última unidad medida de tiempo para el motor (datos censurados). Para representar que cada motor inicia con diferentes grados de desgaste inicial y variación de fabricación se tienen tres diferentes variables de configuración inicial y 21 medidas de sensores en cada ciclo.
 
-El motor funciona de manera regular al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo es estimar la función de supervivencia para el tiempo de fallo de los motores y ver en cuanto afectan las distintas mediciones de los sensores sobre el tiempo de fallo. 
-
-
+El motor funciona de manera regular al inicio de cada serie de tiempo y comienza a degradarse en algún momento durante la serie. El objetivo es estimar la función de supervivencia para el tiempo de fallo de los motores y ver en cuanto afectan las distintas mediciones de los sensores sobre el tiempo de fallo.
 
 ## Objetivos
 
@@ -63,21 +60,26 @@ Los objetivos de este trabajo son:
 2. Entender si las configuraciones y las lecturas de sensor ayudan a explicar la falla del motor.
 3. Construir un modelo predictivo que permita estimar el ciclo previo a la falla.
 
-# Análisis de Datos
+\pagebreak
 
-Nuestra base de datos cuenta con 75,738 registros correspondientes a 436 motores, donde cada registro corresponde a un ciclo de un motor en específico e incluye las configuraciones iniciales del ciclo así como las mediciones de los sensores.
 
-Contamos con 50% de censura por la derecha, donde si el motor no tiene censura su último registro será del último ciclo antes de mantenimiento. En la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento o en qué ciclo se detuvieron las mediciones, es decir en qué ciclo la censura comenzó.
+# Análisis exploratorio de datos
+
+La base de datos cuenta con 75,738 registros correspondientes a 436 motores. Cada registro corresponde a un ciclo de un motor en específico e incluye las configuraciones del ciclo así como las mediciones de los sensores. El 50% de los motores en la base tienen censura por la derecha, el otro 50% tiene la última medición antes de ser llevado a mantenimiento.
+
+
+Para observar qué tanta censura tienen los motores, se generan las siguientes distribuciones de tiempo de falla para motores sin censura y con censura.
+
 
 ```{r}
-datos %>% 
-  filter(delta == 1) %>% 
-  select(id, ciclo) %>% 
+datos %>%
+  filter(delta == 1) %>%
+  select(id, ciclo) %>%
   mutate(
     id = gsub("e(.*)", "\\1", id) %>% as.numeric
-  ) %>% 
-  group_by(id) %>% 
-  summarise(ciclo = max(ciclo)) %>% 
+  ) %>%
+  group_by(id) %>%
+  summarise(ciclo = max(ciclo)) %>%
   ggplot(
     aes(
       y = ciclo,
@@ -97,22 +99,19 @@ datos %>%
   labs(
     y = "Número de Ciclos",
     x = "Motores",
-    title = "Datos sin censura"
+    title = "Ciclos en funcionamiento hasta mantenimiento"
   )
 ```
-Fig. Ciclos en funcionamiento hasta mantenimiento
-
- Para el caso de motores sin censura, en la siguiente gráfica podemos observar la distribución del tiempo en que cada motor está en funcionamiento y en qué ciclo es mandado a mantenimiento dada una falla.
 
 ```{r}
-datos %>% 
-  filter(delta == 0) %>% 
-  select(id, ciclo) %>% 
+datos %>%
+  filter(delta == 0) %>%
+  select(id, ciclo) %>%
   mutate(
     id = gsub("c(.*)", "\\1", id) %>% as.numeric
-  ) %>% 
-  group_by(id) %>% 
-  summarise(ciclo = max(ciclo)) %>% 
+  ) %>%
+  group_by(id) %>%
+  summarise(ciclo = max(ciclo)) %>%
   ggplot(
     aes(
       y = ciclo,
@@ -132,22 +131,37 @@ datos %>%
   labs(
     y = "Número de Ciclos",
     x = "Motores",
-    title = "Datos con censura"
+    title = "Ciclos en funcionamiento hasta censura"
   )
 ```
-Fig. Ciclos en funcionamiento hasta censura
 
- Nuestra base de datos también incluye 3 configuraciones que hacen los operadores al inicio de cada ciclo. Cada configuración tiene un rango distinto. La siguiente gráfica muestra de ejemplo al motor e5 y de las distintas configuraciones definidas en cada ciclo.
+
+Las gráficas muestran que la distribución de fallas de motor sin censura tiende a acumular fallas a partir del periodo 120 y los motores censurados dejan de tener observaciones a partir del periodo 20. Esto se considerará en la construcción de la verosimilitud de los distintos modelos.
+
+\pagebreak
+
+ La base de datos incluye 3 configuraciones iniciales a cada periodo de los motores. Cada configuración tiene un rango distinto. Para mostrar el comportamiento de esta variable se muestra la siguiente gráfica con las configuraciones a lo largo del tiempo para un motor en particular \textit{e5}:
 
 ```{r}
-ggplot(datos %>% filter(id=='e5'), aes(ciclo)) +
-  geom_line(aes(y = conf_1, colour = "conf_1")) + 
-  geom_line(aes(y = conf_2, colour = "conf_2")) + 
-  geom_line(aes(y = conf_3, colour = "conf_3")) + 
+datos %>%
+  filter(id == "e5") %>%
+  select(ciclo, starts_with("conf_")) %>%
+  gather(key, value, -ciclo) %>%
+  mutate(
+    key = gsub("conf_(.*)", "Configuración \\1", key)
+  ) %>%
+  ggplot(
+    aes(
+      x = ciclo,
+      y = value,
+      colour = key
+    )
+  ) +
+  geom_line() +
   theme_gdocs() +
   labs(title = "Configuraciones previas al ciclo",
        subtitle = "Ejemplo: motor e5",
-       x = "Ciclo", 
+       x = "Ciclo",
        y = "Configuración") +
   theme(plot.title = element_text(hjust = 0.5))
 ```
@@ -155,54 +169,65 @@ Fig. Configuraciones por ciclo para motor e5
 
  Cada configuración tiene mediciones en la siguiente escala:
 
-- Configuración 1: De 0 a 42.1 
-- Configuración 2: De 0 a 0.842 
+- Configuración 1: De 0 a 42.1
+- Configuración 2: De 0 a 0.842
 - Configuración 3: Valores discretos de 0 a 100 con saltos de 20 puntos
 
 
 ```{r}
-conf1 <- melt(datos, id.vars='id', measure.vars=c('conf_1','conf_2', 'conf_3'))
+  datos %>%
+  select(ciclo, starts_with("conf_")) %>%
+  gather(key, value, -ciclo) %>%
+  mutate(
+    key = gsub("conf_(.*)", "Configuración \\1", key)
+  ) %>%
 
-ggplot(conf1, aes(x=variable, y=value)) + 
+  ggplot(
+    aes(
+      x = key,
+      y = value
+    )
+  ) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Configuración previa al ciclo",
        subtitle = "Todos los ciclos",
-       x = "Tipo de configuración", 
+       x = "Tipo de configuración",
        y = "Valor establecido para la configuración") +
   theme(plot.title = element_text(hjust = 0.5))
 
 ```
-Fig. Boxplot para las configuraciones de cada ciclo
+
+\pagebreak
 
  Además contamos con las lecturas de 21 sensores en cada ciclo. La siguiente gráfica muestra de nuevo el ejemplo del motor e5 pero con las distintas lecturas de los sensores en cada ciclo.
 
-```{r, fig.height = 6}
-datos %>% 
-  filter(id == "e5") %>% 
-  select(-c(id, starts_with("conf"), delta)) %>% 
+```{r, fig.height=3.5}
+datos %>%
+  filter(id == "e5") %>%
+  select(-c(id, starts_with("conf"), delta)) %>%
   gather(
-    key, 
-    value, 
+    key,
+    value,
     -ciclo
-  ) %>% 
+  ) %>%
   mutate(
     key = gsub("sensor_(.*)", "Sensor \\1", key )
-  ) %>% 
+  ) %>%
   ggplot(
     aes(
       x = ciclo,
-      y = value, 
+      y = value,
       colour = key
     )
   ) +
   geom_line() +
   theme_gdocs() +
   labs(
-    title = "Lectura de sensores por ciclo",
+    title = "Lectura de sensores \npor ciclo",
     subtitle = "Ejemplo: motor e5",
-    x = "Ciclo", 
+    x = "Ciclo",
     y = "Lectura de Sensor",
     colour = "Sensor"
   ) +
@@ -210,7 +235,6 @@ datos %>%
         legend.position = "bottom") +
   guides(col = guide_legend(ncol = 6))
 ```
-Fig. Lectura de sensores por ciclo para motor e5
 
  En general cada sensor tiene mediciones en la siguiente escala:
 
@@ -230,40 +254,44 @@ Fig. Lectura de sensores por ciclo para motor e5
 
 sensor1 <- melt(datos, id.vars='id', measure.vars=colnames(datos)[6:26])
 
-ggplot(sensor1, aes(x=variable, y=value)) + 
+sensor1 %>%
+  mutate(variable = gsub("sensor_(.*)", "Sensor \\1", variable)) %>%
+ggplot(aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   labs(title = "Medición de sensores",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor") +
   theme(axis.text.x = element_text(angle = 90),
         plot.title = element_text(hjust = 0.5))
 ```
-Fig. Boxplot para todas las lecturas de sensores
 
- A continuación se muestran las densidades de los valores que toman cada uno de los sensores en los datos observados. Se logra apreciar que existen sensores que tienen una densidad prácticamente idéntica como son los sensores 3 y 9, así como los sensores 20 y 21.
+ A continuación se muestran las densidades de los valores que toman cada uno de los sensores en los datos observados. Se logra apreciar que existen sensores que tienen una densidad muy parecida aunque con distinta escala, por ejemplo, los sensores 3 y 9, y los sensores 20 y 21.
 
 ```{r, fig.height = 8}
-datos %>% 
-  select(-starts_with("conf")) %>% 
-  gather(key = variable, value = medicion, starts_with("sensor")) %>% 
+datos %>%
+  select(-starts_with("conf")) %>%
+  gather(key = variable, value = medicion, starts_with("sensor")) %>%
+  mutate(variable = gsub("sensor_(.*)", "Sensor \\1", variable)) %>%
   ggplot(aes(x = medicion)) +
   geom_density() +
+  theme_gdocs() +
   facet_wrap(vars(variable), scales = "free", ncol = 3) +
-  labs(title = "Distribuciones para los parámetros de configuración",
+  labs(title = "Distribuciones para los parámetros \nde configuración",
        x = "Medición",
        y = "Densidad") +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(axis.text.x = element_text(angle = 90), axis.text.y  = element_blank())
 ```
 
- Dado lo anterior se analizó la correlación entre las mediciones de los sensores para determinar cuáles están altamente correlacionados y retirar dichas variables dentro de los modelos de vida acelerada.
+ Dado lo anterior se analizó la correlación entre las mediciones de los sensores para determinar cuáles están altamente correlacionados y retirar dichas variables dentro de los modelos de vida acelerada para no sufrir de problemas de estimación.
 
 ```{r, fig.height = 5}
-datos %>% 
-  select(starts_with("sensor")) %>% 
-  as.matrix() %>% 
-  cor() %>% 
+datos %>%
+  select(starts_with("sensor")) %>%
+  rename_all(function(x) gsub("sensor_(.*)", "Sensor \\1", x )) %>%
+  as.matrix() %>%
+  cor() %>%
   ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
 ```
 
@@ -278,37 +306,43 @@ datos %>%
  Quedando así la siguiente matriz de correlaciones:
 
 ```{r}
-datos_sel <- datos %>% 
+datos_sel <- datos %>%
              select(-c(sensor_02, sensor_04, sensor_05, sensor_06, sensor_07, sensor_09, sensor_10,
                        sensor_11, sensor_12, sensor_14, sensor_15, sensor_16, sensor_17, sensor_19,
                        sensor_20, sensor_21))
 
-datos_sel %>% 
-  select(starts_with("sensor")) %>% 
-  as.matrix() %>% 
-  cor() %>% 
+datos_sel %>%
+  select(starts_with("sensor")) %>%
+    rename_all(function(x) gsub("sensor_(.*)", "Sensor \\1", x )) %>%
+
+  as.matrix() %>%
+  cor() %>%
   ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
 ```
 
+\pagebreak
+
 # Análisis inferencial
+
+Lo primero que se realiza es una estimación no parámetrica para tener un punto de comparación de la función de supervivencia. Posteriormente se comparan distintos modelos paramétricos para ver cuáles de las especificaciones es la mejor y poder usarlo en un modelo de vida acelerada.
 
 ## Estimador Kaplan Meier
 
 ```{r}
 datos_norm <- datos_sel %>%
-              gather(key = variable, value = medicion, c(starts_with("conf"), starts_with("sensor"))) %>% 
-              group_by(variable) %>% 
+              gather(key = variable, value = medicion, c(starts_with("conf"), starts_with("sensor"))) %>%
+              group_by(variable) %>%
               mutate(media = mean(medicion),
                      desv_s = sd(medicion),
                      medicion = (medicion - media)/desv_s) %>%
-              ungroup() %>% 
-              select(-c(media, desv_s)) %>% 
+              ungroup() %>%
+              select(-c(media, desv_s)) %>%
               spread(key = variable, value = medicion)
 
-max_ciclo <- datos %>% 
-              group_by(id) %>% 
+max_ciclo <- datos %>%
+              group_by(id) %>%
               summarise(max_ciclo = max(ciclo),
-                        delta = max(delta)) %>% 
+                        delta = max(delta)) %>%
               arrange(max_ciclo, delta)
 
 datos_agg <- max_ciclo %>%
@@ -320,17 +354,18 @@ xfit <- survfit(tiempo ~ 1, conf.type = "log-log")
 
 xfit_tbl <- with(xfit, tibble(time, n.risk, n.event, n.censor, surv, lower, upper))
 ```
- 
+
  Se procede a obtener el estimador Kaplan Meier para la función de supervivencia y mostrar la estimación no paramétrica de la función de supervivencia. La función de supervivencia con el estimador de Kaplan Meier se comporta de la siguiente forma:
 
 ```{r}
-xfit_tbl %>%   
+xfit_tbl %>%
   ggplot(aes(x = time, y = surv)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
   geom_line(color = "steelblue", size = 1) +
   labs(title = "Función de supervivencia",
        x = "Ciclos",
        y = "Probabilidad") +
+    theme_gdocs() +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
@@ -343,7 +378,6 @@ q50 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 -
                               conf.level = 0.95, conftype = "log-log")
 q75 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - 0.75),
                               conf.level = 0.95, conftype = "log-log")
-
 quantiles_km <- c(q25$quantities[,3], q50$quantities[,3], q75$quantities[,3])
 quantiles_km_lower <- c(q25$quantities[,4], q50$quantities[,4], q75$quantities[,4])
 quantiles_km_upper <- c(q25$quantities[,5], q50$quantities[,5], q75$quantities[,5])
@@ -351,18 +385,18 @@ quantiles_km <- tibble(q = c("0.25", "0.5", "0.75"),
                        quant = quantiles_km,
                        q_lower = quantiles_km_lower,
                        q_upper = quantiles_km_upper)
-quantiles_km %>% 
+quantiles_km %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Tabla de cuantiles Kaplan-Meier",
-               col.names = c("Cuantil", "Valor", "Inferior", "Superior")) %>% 
-  row_spec(0, align = "c") %>% 
+               col.names = c("Cuantil", "Valor", "Inferior", "Superior")) %>%
+  row_spec(0, align = "c") %>%
   add_header_above(c("", "", "Intervalo de confianza" = 2)) %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
- Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico. 
- 
+ Ahora procedemos a comparar la estimación de la función de supervivencia con modelos parámetricos para determinar si es posible utilizar algún modelo paramétrico.
+
 ### Comparación con el modelo Exponencial
 
 ```{r}
@@ -375,8 +409,7 @@ ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
                  superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
-
-xfit_tbl %>%   
+xfit_tbl %>%
   ggplot(aes(x = time, y = surv)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
   geom_line(color = "steelblue", size = 1) +
@@ -386,10 +419,11 @@ xfit_tbl %>%
   labs(title = "Función de supervivencia KM y exponencial",
        x = "Ciclos",
        y = "Probabilidad") +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_gdocs()
 ```
 
-Se observa que el estimador Kaplan-Meier no se ajsuta de forma adecuada a un modelo paramétrico exponencial.
+Se observa que el modelo paramétrico exponencial no ajusta de manera adecuada al estimador Kaplan-Meier.
 
 ### Comparación con el modelo Weibull:
 
@@ -398,13 +432,11 @@ xfitp <- survreg(tiempo ~ 1, dist = "weibull")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
 wei_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
-
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
                  superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
-
-xfit_tbl %>%   
+xfit_tbl %>%
   ggplot(aes(x = time, y = surv)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
   geom_line(color = "steelblue", size = 1) +
@@ -414,25 +446,25 @@ xfit_tbl %>%
   labs(title = "Función de supervivencia KM y Weibull",
        x = "Ciclos",
        y = "Probabilidad") +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_gdocs()
 ```
 
-Se observa que el estimador Kaplan-Meier se ajsuta de forma adecuada a un modelo paramétrico Weibull. Sin embargo, se aprecia que al inicio el modelo subestima la función de supervivencia y despúes el cuantil $50\%$ el modelo tiende a sobreestimar la función de supervivencia.
+Se observa que el modelo paramétrico Weibull  se ajsuta de forma adecuada a un estimador Kaplan-Meier. Sin embargo, se aprecia que al inicio el modelo subestima la función de supervivencia y despúes el cuantil $50\%$ el modelo tiende a sobreestimar la función de supervivencia.
 
-### Comparación con el modelo Loglogistico: 
+
+### Comparación con el modelo Loglogistico:
 
 ```{r}
 xfitp <- survreg(tiempo ~ 1, dist = "loglogistic")
 pct <- 1:98/100
 xpredp<-predict(xfitp, type="quantile", p=pct, se=TRUE)
 llo_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
-
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
                  superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
-
-xfit_tbl %>%   
+xfit_tbl %>%
   ggplot(aes(x = time, y = surv)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
   geom_line(color = "steelblue", size = 1) +
@@ -443,10 +475,12 @@ xfit_tbl %>%
        x = "Ciclos",
        y = "Probabilidad") +
   xlim(0, 400) +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_gdocs()
 ```
 
-Se observa que el estimador Kaplan-Meier se ajsuta de forma adecuada a un modelo paramétrico loglogistico.
+Se observa que un modelo paramétrico loglogistico se ajsuta de forma adecuada al estimador Kaplan-Meier.
+
 
 ### Comparación con el modelo Lognormal:
 
@@ -455,13 +489,11 @@ xfitp <- survreg(tiempo ~ 1, dist = "lognormal")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
 lno_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
-
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
                  superior = xpredp$fit[1,]+2*xpredp$se.fit[1,])
-
-xfit_tbl %>%   
+xfit_tbl %>%
   ggplot(aes(x = time, y = surv)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
   geom_line(color = "steelblue", size = 1) +
@@ -472,16 +504,19 @@ xfit_tbl %>%
        x = "Ciclos",
        y = "Probabilidad") +
   xlim(0, 400) +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_gdocs()
 ```
 
-Se observa que el estimador Kaplan-Meier se ajsuta de forma adecuada a un modelo paramétrico lognormal.
+Se observa que un modelo paramétrico lognormal se ajsuta de forma adecuada al estimador Kaplan-Meier.
+
 
 ### Cuantiles
 
 De las gráficas previas se logra apresiar que los modelos lognormal y loglogistico son los que mejor aproximan al estimador Kaplan-Meier, aunque el modelo Weibull también tiene una aproximación apropiada.
 
-Comparando los cuantiles de los modelos presentados previamente se otiene la siguiente tabla:
+Comparando los cuantiles de los modelos presentados previamente se obtiene la siguiente tabla:
+
 
 ```{r}
 quantiles <- matrix(c(exp_q$fit[1,],
@@ -491,16 +526,16 @@ quantiles <- matrix(c(exp_q$fit[1,],
                       ncol = 3, byrow = TRUE)
 
 colnames(quantiles) <- c("0.25", "0.5", "0.75")
-quantiles <- as_tibble(quantiles) %>% 
-              mutate(modelo = c("Exponencial", "Weibull", "Lognormal", "Loglogistico")) %>% 
+quantiles <- as_tibble(quantiles) %>%
+              mutate(modelo = c("Exponencial", "Weibull", "Lognormal", "Loglogistico")) %>%
               select(modelo, starts_with("0"))
 
-quantiles %>% 
+quantiles %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Tabla de cuantiles",
-               col.names = c("Modelo", "0.25", "0.25", "0.75")) %>% 
-  row_spec(0, align = "c") %>% 
+               col.names = c("Modelo", "0.25", "0.25", "0.75")) %>%
+  row_spec(0, align = "c") %>%
   add_header_above(c("", "Cuantiles" = 3)) %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
@@ -510,11 +545,11 @@ Como puede apreciarse, los quantiles de los modelos lognormal y loglogistico son
 Comparando los quantiles de las distribuciones paramétricas respecto a los quantiles obtenidos con el estimador Kaplan-Meier, se observa el siguiente comportamiento:
 
 ```{r}
-q_tbl <- quantiles %>% 
+q_tbl <- quantiles %>%
   gather(key = q, value = valor, -modelo)
 
 set.seed(42)
-quantiles_km %>% 
+quantiles_km %>%
   ggplot(aes(x = quant, y = reorder(q, -quant))) +
   geom_jitter(height = 0.1, width = 0) +
   geom_errorbarh(aes(xmin = q_lower, xmax = q_upper), height = .2, size = 1) +
@@ -527,120 +562,129 @@ quantiles_km %>%
 
 En este caso, se observa que incluso los cuantiles de la distribución Weibull caen dentro del intervalo de confianza para el estimador Kaplan-Meier.
 
+\pagebreak
+
 ## Modelos de vida acelerada
 
  Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo loglogistico como lognormal. Por tal motivo se procede a ajustar modelos de regresión para ambas distribuciones.
 
-```{r}
-xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "loglogistic")
-tabla <- summary(xfit_rloglog1)
+### Loglogístico
 
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
+Se comienza el análisis incluyendo todas las covariables elegidas en el análisis exploratorio.
+
+```{r}
+xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "loglogistic")
+tabla <- summary(xfit_rlognorm1)
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    "Configuración 1",
+    "Configuración 2",
+    "Configuración 3",
+    paste("Sensor", c("01", "03", "08", "13", "18")),
+    "Log(scale)")
+    ) %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
   row_spec(0, align = "c") %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
-En este caso, se observa que ningún coeficiente es significativo a un nivel de $\alpha = 0.05$. Por lo que los valores de configuración inicial no tienen un efecto en la supervivencia de las máquinas.
+Se puede notar que no todas las variables tienen un efecto significativo con significancia $\alpha = 0.05$, por lo que se necesitan descartar variables. Esto se realiza quitando una variable la que mayor \textit{p-value} tenga en la regresión y se llegó a una especificación:
+
 
 ```{r}
-xfit_rloglog2 <- survreg(tiempo ~ 
-                     datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
-                     datos_agg$sensor_13 + datos_agg$sensor_18,
-                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
-                    dist = "loglogistic")
 
-tabla <- summary(xfit_rloglog2)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", paste("Sensor", c("01", "03", "08", "13", "18")), "Log(scale)")) %>% 
-  knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
-               escape = FALSE, digits = 3,
-               caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c") %>%
-  kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
-```
-
-Notamos que en este modelo de regresión se tiene un coeficiente significativos a un nivel de $\alpha = 0.5$.
-
-- Sensor 18
-
-por lo que los parámetros de este sensore ayuda a explicar la supervivencia de las máquinas.
-
-```{r}
-xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "lognormal")
+xfit_rlognorm1 <- survreg(tiempo ~   datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03  +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "loglogistic")
 tabla <- summary(xfit_rlognorm1)
 
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    "Configuración 3",
+    paste("Sensor", c("01", "03", "13", "18")),
+    "Log(scale)")
+    ) %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
   row_spec(0, align = "c") %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
-En este caso, se observa que ningún coeficiente es significativo a un nivel de $\alpha = 0.05$. Por lo que los valores de configuración inicial no tienen un efecto en la supervivencia de las máquinas.
+este modelo tiene todas sus variables significativas y log-verosimilitud `r round(xfit_rlognorm1$loglik[2], 2)` que es lo que nos ayudará a comparar contra el modelo lognormal.
+
+### Lognormal
+
+Se comienza el análisis incluyendo todas las covariables elegidas en el análisis exploratorio.
 
 ```{r}
-xfit_rlognorm2 <- survreg(tiempo ~ 
-                     datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
-                     datos_agg$sensor_13 + datos_agg$sensor_18,
-                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
-                    dist = "lognormal")
-
-tabla <- summary(xfit_rlognorm2)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", paste("Sensor", c("01", "03", "08", "13", "18")), "Log(scale)")) %>% 
+xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "lognormal")
+tabla <- summary(xfit_rlognorm1)
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    "Configuración 1",
+    "Configuración 2",
+    "Configuración 3",
+    paste("Sensor", c("01", "03", "08", "13", "18")),
+    "Log(scale)")
+    ) %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
   row_spec(0, align = "c") %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
-Notamos que en este modelo de regresión se tienen tres coeficientes significativos a un nivel de $\alpha = 0.5$.
 
-- Sensor 03
-- Sensor 08
-- Sensor 18
-
-por lo que los parámetros de dichos sensores ayudan a explicar la supervivencia de las máquinas.
-
-Se procede a generar un modelo de regresión con estos parámetros:
+Se puede notar que no todas las variables tienen un efecto significativo con significancia $\alpha = 0.05$, por lo que se necesitan descartar variables. Esto se realiza quitando una variable la que mayor \textit{p-value} tenga en la regresión y se llegó a una especificación:
 
 ```{r}
-xfit_rlognorm2 <- survreg(tiempo ~ 
-                     datos_agg$sensor_03 + datos_agg$sensor_08 + datos_agg$sensor_18,
-                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
-                    dist = "lognormal")
+xfit_rlognorm1 <- survreg(tiempo ~  datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "lognormal")
+tabla <- summary(xfit_rlognorm1)
 
-tabla <- summary(xfit_rlognorm2)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", paste("Sensor", c("03", "08", "18")), "Log(scale)")) %>% 
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    paste("Sensor", c("03", "08", "13", "18")),
+    "Log(scale)")
+    ) %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
   row_spec(0, align = "c") %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
+
 
 Con lo cual obtenemos un modelo completamente específicado.
+
+La log-verosimilitud de este modelo es: `r round(xfit_rlognorm1$loglik[2], 2)` por lo que se prefiere este modelo sobre el log-logistico y se comenzará la interpretación.
+
+Dado que las variables están estandarizadas, se interpretarán los cambios como un aumento en 1 desviación estándar de la variable de interes.
+
+
+- Un aumento de una desviación estándar del sensor 3 resulta en una disminución del $0.89\%$ del tiempo de vida.
+- Un aumento de una desviación estándar del sensor 8 resulta en un aumento del $8.54\%$ del tiempo de vida.
+- Un aumento de una desviación estándar del sensor 13 resulta en una disminución del $0.69\%$ del tiempo de vida.
+- Un aumento de una desviación estándar del sensor 18 resulta en una disminución del $6.76\%$ del tiempo de vida.
+
+\pagebreak
+
 
 # Apéndice
 
@@ -650,7 +694,7 @@ Contamos con 75,738 registros de ciclos de motores
 ```{r}
 datos <- read_rds(
   here::here("datos/datos.rds")
-) %>% 
+) %>%
   select("id":"sensor_21", "delta")
 nrow(datos)
 ```
@@ -682,20 +726,18 @@ Analizando cada variable.
 ID: Nuestra base cuenta con registros de 436 motores
 ```{r}
 datos$id <- as.factor(datos$id)
-
 length(levels(datos$id))
 ```
 
 Delta: De las 436 motores, el 50% (218) cuenta con censura a la derecha y el otro 50% de motores tiene datos exactos
 ```{r}
 sqldf("select count(distinct id) as maquinas
-      from datos 
+      from datos
       where delta=1")
-
 ```
 
 
-Ciclo: Analizando solo los datos exactos vemos que la cantidad mìnima de ciclos es 128 y la máxima es 357, 
+Ciclo: Analizando solo los datos exactos vemos que la cantidad mìnima de ciclos es 128 y la máxima es 357,
 además su distribución está sesgada a la derecha alrededor de 209 ciclos
 ```{r}
 ciclos <- datos %>% filter(delta==1) %>% count(id) %>% select(maquina=id, ciclos=n)
@@ -703,50 +745,42 @@ summary(ciclos)
 ```
 
 ```{r}
-ggplot(ciclos) + 
-  geom_histogram(aes(x = ciclos, y = (..count..)/sum(..count..)), 
+ggplot(ciclos) +
+  geom_histogram(aes(x = ciclos, y = (..count..)/sum(..count..)),
                  bins = 15, fill = "#6497b1", colour = "black", ) +
   theme_gdocs() +
   labs(title = "Número de ciclos hasta mantenimiento",
        subtitle = "Datos exactos (Sin censura)",
-       x = "Número de ciclos hasta mantenimiento", 
-       y = "Frecuencia Relativa")  
-
+       x = "Número de ciclos hasta mantenimiento",
+       y = "Frecuencia Relativa")
 ```
 
-Veamos que como es esperado las maquinas con censura tienen una cantidad de ciclos menor a la de los registros sin censura 
+Veamos que como es esperado las maquinas con censura tienen una cantidad de ciclos menor a la de los registros sin censura
 ```{r}
 tciclos <- sqldf("select distinct delta, id as maquina, count(distinct ciclo) as ciclos
                  from datos
                  group by 1,2")
-
 rep.col<-function(x,n){
    matrix(rep(x,each=n), ncol=n, byrow=TRUE)
 }
-
 ciclo_max <- max(tciclos$ciclos)
 nmaquinas <- nrow(tciclos)
-
 ciclos_detalle <- cbind(tciclos$ciclos[[1]],tciclos$delta[[1]],tciclos$maquina[[1]],as.data.frame(rep.col(1, tciclos$ciclos[[1]])),as.data.frame(rep.col(0,ciclo_max-tciclos$ciclos[[1]])))
-colnames(ciclos_detalle) <- c("ciclos","delta","maquina",paste("ciclo_",1:ciclo_max,sep="")) 
-
+colnames(ciclos_detalle) <- c("ciclos","delta","maquina",paste("ciclo_",1:ciclo_max,sep=""))
 for (i in 2:nmaquinas) {
   if(tciclos$ciclos[[i]]!=ciclo_max) {
     aux <- cbind(tciclos$ciclos[[i]],tciclos$delta[[i]],tciclos$maquina[[i]],as.data.frame(rep.col(1, tciclos$ciclos[[i]])),as.data.frame(rep.col(0,ciclo_max-tciclos$ciclos[[i]]))) }
   else {
     aux <- cbind(tciclos$ciclos[[i]],tciclos$delta[[i]],tciclos$maquina[[i]],as.data.frame(rep.col(1, tciclos$ciclos[[i]])))
   }
-  colnames(aux) <- c("ciclos","delta","maquina",paste("ciclo_",1:ciclo_max,sep="")) 
+  colnames(aux) <- c("ciclos","delta","maquina",paste("ciclo_",1:ciclo_max,sep=""))
   ciclos_detalle <- rbind(ciclos_detalle, aux)
 }
-
-ciclos_seq <- seqdef(ciclos_detalle, 4:(ciclo_max+3), labels = c('censura','funcionando'), 
+ciclos_seq <- seqdef(ciclos_detalle, 4:(ciclo_max+3), labels = c('censura','funcionando'),
                      cpal = c("#b3cde0", "#011f4b"))
-
-seqiplot(ciclos_seq, idxs=0, sortv=ciclos_detalle$ciclos, border=NA, space=0, with.legend=F, 
-         group=ciclos_detalle$delta, main='Ciclos en funcionamiento') 
-seqlegend(ciclos_seq) 
-
+seqiplot(ciclos_seq, idxs=0, sortv=ciclos_detalle$ciclos, border=NA, space=0, with.legend=F,
+         group=ciclos_detalle$delta, main='Ciclos en funcionamiento')
+seqlegend(ciclos_seq)
 ```
 
 
@@ -758,45 +792,41 @@ summary(datos %>% select(conf_1, conf_2, conf_3))
 
 ```{r}
 ggplot(datos %>% filter(id=='e5'), aes(ciclo)) +
-  geom_line(aes(y = conf_1, colour = "conf_1")) + 
-  geom_line(aes(y = conf_2, colour = "conf_2")) + 
-  geom_line(aes(y = conf_3, colour = "conf_3")) + 
+  geom_line(aes(y = conf_1, colour = "conf_1")) +
+  geom_line(aes(y = conf_2, colour = "conf_2")) +
+  geom_line(aes(y = conf_3, colour = "conf_3")) +
   theme_gdocs() +
   labs(title = "Configuraciones previas al ciclo",
        subtitle = "Ejemplo: motor e5",
-       x = "Ciclo", 
-       y = "Configuración")  
+       x = "Ciclo",
+       y = "Configuración")
 ```
 
 
 
 ```{r}
 conf1 <- melt(datos, id.vars='id', measure.vars=c('conf_1','conf_2', 'conf_3'))
-
-ggplot(conf1, aes(x=variable, y=value)) + 
+ggplot(conf1, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Configuración previa al ciclo",
        subtitle = "Todos los ciclos",
-       x = "Tipo de configuración", 
+       x = "Tipo de configuración",
        y = "Valor establecido para la configuración")
-
 ```
 
 
 ```{r}
 conf2 <- melt(datos, id.vars='id', measure.vars=c('conf_2'))
-
-ggplot(conf2, aes(x=variable, y=value)) + 
+ggplot(conf2, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Configuración 2",
        subtitle = "Todos los ciclos",
-       x = "Tipo de configuración", 
+       x = "Tipo de configuración",
        y = "Valor establecido para la configuración")
-
 ```
 
 
@@ -807,21 +837,21 @@ summary(datos[6:26])
 ```
 
 ```{r}
-datos %>% 
-  filter(id == "e5") %>% 
-  select(-c(id, starts_with("conf"), delta)) %>% 
+datos %>%
+  filter(id == "e5") %>%
+  select(-c(id, starts_with("conf"), delta)) %>%
   gather(
-    key, 
-    value, 
+    key,
+    value,
     -ciclo
-  ) %>% 
+  ) %>%
   mutate(
     key = gsub("sensor_(.*)", "Sensor \\1", key )
-  ) %>% 
+  ) %>%
   ggplot(
     aes(
       x = ciclo,
-      y = value, 
+      y = value,
       colour = key
     )
   ) +
@@ -830,176 +860,153 @@ datos %>%
   labs(
     title = "Lectura de sensores por ciclo",
     subtitle = "Ejemplo: motor e5",
-    x = "Ciclo", 
+    x = "Ciclo",
     y = "Lectura de Sensor",
     colour = "Sensor"
-  )  
+  )
 ```
 
 
 ```{r}
-
 sensor1 <- melt(datos, id.vars='id', measure.vars=colnames(datos)[6:26])
-
-ggplot(sensor1, aes(x=variable, y=value)) + 
+ggplot(sensor1, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensores",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor2 <- melt(datos, id.vars='id', measure.vars=c('sensor_16'))
-
-ggplot(sensor2, aes(x=variable, y=value)) + 
+ggplot(sensor2, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensor 16",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor3 <- melt(datos, id.vars='id', measure.vars=c('sensor_10'))
-
-ggplot(sensor3, aes(x=variable, y=value)) + 
+ggplot(sensor3, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensor 10",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor4 <- melt(datos, id.vars='id', measure.vars=c('sensor_05', 'sensor_06', 'sensor_15'))
-
-ggplot(sensor4, aes(x=variable, y=value)) + 
+ggplot(sensor4, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensores 5, 6 y 15",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor5 <- melt(datos, id.vars='id', measure.vars=c('sensor_11', 'sensor_20', 'sensor_21'))
-
-ggplot(sensor5, aes(x=variable, y=value)) + 
+ggplot(sensor5, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensores 11, 20 y 21",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 
 ```{r}
 sensor6 <- melt(datos, id.vars='id', measure.vars=c('sensor_19'))
-
-ggplot(sensor6, aes(x=variable, y=value)) + 
+ggplot(sensor6, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensor 19",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor7 <- melt(datos, id.vars='id', measure.vars=c('sensor_01', 'sensor_02', 'sensor_07', 'sensor_12', 'sensor_17'))
-
-ggplot(sensor7, aes(x=variable, y=value)) + 
+ggplot(sensor7, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensores 1, 2, 7, 12 y 17",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor8 <- melt(datos, id.vars='id', measure.vars=c('sensor_03', 'sensor_04'))
-
-ggplot(sensor8, aes(x=variable, y=value)) + 
+ggplot(sensor8, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensores 3 y 4",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor9 <- melt(datos, id.vars='id', measure.vars=c('sensor_08', 'sensor_13', 'sensor_18'))
-
-ggplot(sensor9, aes(x=variable, y=value)) + 
+ggplot(sensor9, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensores 8, 13 y 18",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 
 ```{r}
 sensor10 <- melt(datos, id.vars='id', measure.vars=c('sensor_09', 'sensor_14'))
-
-ggplot(sensor10, aes(x=variable, y=value)) + 
+ggplot(sensor10, aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   coord_flip() +
   labs(title = "Medición de sensores 9 y 14",
        subtitle = "Todos los ciclos",
-       x = "Sensor", 
+       x = "Sensor",
        y = "Lectura del Sensor")
-
 ```
 
 ## Tabla de Kaplan Meier
 
 ```{r}
-xfit_tbl %>% 
+xfit_tbl %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Tabla del estimador Kaplan Meier",
                col.names = c("Tiempo", "Riesgo", "Eventos", "Censurado",
-                             "Supervivencia", "Inferior", "Superior")) %>% 
-  row_spec(0, align = "c") %>% 
+                             "Supervivencia", "Inferior", "Superior")) %>%
+  row_spec(0, align = "c") %>%
   add_header_above(c("", "", "", "", "", "Intervalo de confianza" = 2)) %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
-
-
