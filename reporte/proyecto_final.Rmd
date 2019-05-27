@@ -34,10 +34,8 @@ library(survival)
 library(kableExtra)
 library(latex2exp)
 library(stargazer)
-
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3, cache = TRUE)
 theme_set(theme_gdocs())
-
 datos <- read_rds(
   here::here("datos/datos.rds")
 ) %>%
@@ -181,7 +179,6 @@ Fig. Configuraciones por ciclo para motor e5
   mutate(
     key = gsub("conf_(.*)", "Configuración \\1", key)
   ) %>%
-
   ggplot(
     aes(
       x = key,
@@ -196,7 +193,6 @@ Fig. Configuraciones por ciclo para motor e5
        x = "Tipo de configuración",
        y = "Valor establecido para la configuración") +
   theme(plot.title = element_text(hjust = 0.5))
-
 ```
 
 \pagebreak
@@ -251,9 +247,7 @@ datos %>%
 - Sensores 9 y 14: De 7852 a 9217
 
 ```{r, fig.height = 8}
-
 sensor1 <- melt(datos, id.vars='id', measure.vars=colnames(datos)[6:26])
-
 sensor1 %>%
   mutate(variable = gsub("sensor_(.*)", "Sensor \\1", variable)) %>%
 ggplot(aes(x=variable, y=value)) +
@@ -310,11 +304,9 @@ datos_sel <- datos %>%
              select(-c(sensor_02, sensor_04, sensor_05, sensor_06, sensor_07, sensor_09, sensor_10,
                        sensor_11, sensor_12, sensor_14, sensor_15, sensor_16, sensor_17, sensor_19,
                        sensor_20, sensor_21))
-
 datos_sel %>%
   select(starts_with("sensor")) %>%
     rename_all(function(x) gsub("sensor_(.*)", "Sensor \\1", x )) %>%
-
   as.matrix() %>%
   cor() %>%
   ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
@@ -338,20 +330,15 @@ datos_norm <- datos_sel %>%
               ungroup() %>%
               select(-c(media, desv_s)) %>%
               spread(key = variable, value = medicion)
-
 max_ciclo <- datos %>%
               group_by(id) %>%
               summarise(max_ciclo = max(ciclo),
                         delta = max(delta)) %>%
               arrange(max_ciclo, delta)
-
 datos_agg <- max_ciclo %>%
              left_join(datos, by = c("id", "max_ciclo" = "ciclo", "delta"))
-
 tiempo <- Surv(datos_agg$max_ciclo, datos_agg$delta)
-
 xfit <- survfit(tiempo ~ 1, conf.type = "log-log")
-
 xfit_tbl <- with(xfit, tibble(time, n.risk, n.event, n.censor, surv, lower, upper))
 ```
 
@@ -404,7 +391,6 @@ xfitp <- survreg(tiempo ~ 1, dist = "exponential")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
 exp_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
-
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
@@ -524,12 +510,10 @@ quantiles <- matrix(c(exp_q$fit[1,],
                       lno_q$fit[1,],
                       llo_q$fit[1,]),
                       ncol = 3, byrow = TRUE)
-
 colnames(quantiles) <- c("0.25", "0.5", "0.75")
 quantiles <- as_tibble(quantiles) %>%
               mutate(modelo = c("Exponencial", "Weibull", "Lognormal", "Loglogistico")) %>%
               select(modelo, starts_with("0"))
-
 quantiles %>%
   knitr::kable(format = "latex", booktabs = TRUE, longtable = TRUE, linesep = "",
                escape = FALSE, digits = 3,
@@ -547,7 +531,6 @@ Comparando los quantiles de las distribuciones paramétricas respecto a los quan
 ```{r}
 q_tbl <- quantiles %>%
   gather(key = q, value = valor, -modelo)
-
 set.seed(42)
 quantiles_km %>%
   ggplot(aes(x = quant, y = reorder(q, -quant))) +
@@ -598,11 +581,9 @@ Se puede notar que no todas las variables tienen un efecto significativo con sig
 
 
 ```{r}
-
 xfit_rlognorm1 <- survreg(tiempo ~   datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03  +
                      datos_agg$sensor_13 + datos_agg$sensor_18, dist = "loglogistic")
 tabla <- summary(xfit_rlognorm1)
-
 tabla$table %>%
   as_tibble(rownames = "coef") %>%
   mutate(coef = c(
@@ -647,14 +628,12 @@ tabla$table %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
-
 Se puede notar que no todas las variables tienen un efecto significativo con significancia $\alpha = 0.05$, por lo que se necesitan descartar variables. Esto se realiza quitando una variable la que mayor \textit{p-value} tenga en la regresión y se llegó a una especificación:
 
 ```{r}
 xfit_rlognorm1 <- survreg(tiempo ~  datos_agg$sensor_03 + datos_agg$sensor_08 +
                      datos_agg$sensor_13 + datos_agg$sensor_18, dist = "lognormal")
 tabla <- summary(xfit_rlognorm1)
-
 tabla$table %>%
   as_tibble(rownames = "coef") %>%
   mutate(coef = c(
@@ -670,10 +649,7 @@ tabla$table %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
 
-
-Con lo cual obtenemos un modelo completamente específicado.
-
-La log-verosimilitud de este modelo es: `r round(xfit_rlognorm1$loglik[2], 2)` por lo que se prefiere este modelo sobre el log-logistico y se comenzará la interpretación.
+La log-verosimilitud de este modelo es: `r round(xfit_rlognorm1$loglik[2], 2)` por lo que se prefiere este modelo sobre el log-normal y se comenzará la interpretación.
 
 Dado que las variables están estandarizadas, se interpretarán los cambios como un aumento en 1 desviación estándar de la variable de interes.
 
@@ -685,6 +661,13 @@ Dado que las variables están estandarizadas, se interpretarán los cambios como
 
 \pagebreak
 
+# Conclusiones
+
+- Se encontró un buen ajuste de la función de supervivencia con Kaplan-Meier.
+- Se encontró que los modelos paramétricos loglogístico o lognormal podían ajustar bien al estimador de Kaplan-Meier.  
+- Se generaron modelos con ambas distribuciones y se encontró que el mejor ajuste lo tenía el modelo lognormal.
+- Se interpretaron los coeficientes y los sensores que mayor impacto tienen sobre la supervivencia son el 8 y el 18.
+- Se generó el modelo predictivo con el modelo lognormal.
 
 # Apéndice
 
@@ -1010,3 +993,4 @@ xfit_tbl %>%
   add_header_above(c("", "", "", "", "", "Intervalo de confianza" = 2)) %>%
   kableExtra::kable_styling(latex_options = c("striped", "repeat_header"))
 ```
+

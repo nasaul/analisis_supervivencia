@@ -326,6 +326,31 @@ xfit_tbl %>%
        y = "Proporción de supervivencia")
 ```
 
+## Estimador Kaplan Meier
+
+```{r}
+q25 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - 0.25),
+                              conf.level = 0.95, conftype = "log-log")
+q50 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - 0.50),
+                              conf.level = 0.95, conftype = "log-log")
+q75 <- biostatUZH::quantileKM(datos_agg$max_ciclo, datos_agg$delta, quant = (1 - 0.75),
+                              conf.level = 0.95, conftype = "log-log")
+quantiles_km <- c(q25$quantities[,3], q50$quantities[,3], q75$quantities[,3])
+quantiles_km_lower <- c(q25$quantities[,4], q50$quantities[,4], q75$quantities[,4])
+quantiles_km_upper <- c(q25$quantities[,5], q50$quantities[,5], q75$quantities[,5])
+quantiles_km <- tibble(q = c("0.25", "0.5", "0.75"),
+                       quant = quantiles_km,
+                       q_lower = quantiles_km_lower,
+                       q_upper = quantiles_km_upper)
+quantiles_km %>%
+  knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Tabla de cuantiles Kaplan-Meier",
+               col.names = c("Cuantil", "Valor", "Inferior", "Superior")) %>%
+  row_spec(0, align = "c") %>%
+  add_header_above(c("", "", "Intervalo de confianza" = 2))
+```
+
 ## Comparación con modelos paramétricos
 
 Comparación con el modelo exponencial:
@@ -334,7 +359,7 @@ Comparación con el modelo exponencial:
 xfitp <- survreg(tiempo ~ 1, dist = "exponential")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
-
+exp_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
@@ -362,7 +387,7 @@ Comparación con el modelo Weibull:
 xfitp <- survreg(tiempo ~ 1, dist = "weibull")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
-
+wei_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
@@ -389,7 +414,7 @@ Comparación con el modelo lognormal:
 xfitp <- survreg(tiempo ~ 1, dist = "lognormal")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
-
+lno_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
@@ -417,7 +442,7 @@ Comparación con el modelo loglogistico:
 xfitp <- survreg(tiempo ~ 1, dist = "loglogistic")
 pct <- 1:98/100
 xpredp<-predict(xfitp,type="quantile",p=pct, se=TRUE)
-
+llo_q <- predict(xfitp, type="quantile", p = c(0.25, 0.5, 0.75), se = TRUE)
 ajuste <- tibble(ciclo = xpredp$fit[1,],
                  ajuste = 1-pct,
                  inferior = xpredp$fit[1,]-2*xpredp$se.fit[1,],
@@ -437,6 +462,44 @@ xfit_tbl %>%
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
+## Cuantiles
+
+```{r}
+quantiles <- matrix(c(exp_q$fit[1,],
+                      wei_q$fit[1,],
+                      lno_q$fit[1,],
+                      llo_q$fit[1,]),
+                      ncol = 3, byrow = TRUE)
+colnames(quantiles) <- c("0.25", "0.5", "0.75")
+quantiles <- as_tibble(quantiles) %>%
+              mutate(modelo = c("Exponencial", "Weibull", "Lognormal", "Loglogistico")) %>%
+              select(modelo, starts_with("0"))
+quantiles %>%
+  knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
+               escape = FALSE, digits = 3,
+               caption = "Tabla de cuantiles",
+               col.names = c("Modelo", "0.25", "0.25", "0.75")) %>%
+  row_spec(0, align = "c") %>%
+  add_header_above(c("", "Cuantiles" = 3))
+```
+
+## Cuantiles
+
+```{r}
+q_tbl <- quantiles %>%
+  gather(key = q, value = valor, -modelo)
+set.seed(42)
+quantiles_km %>%
+  ggplot(aes(x = quant, y = reorder(q, -quant))) +
+  geom_jitter(height = 0.1, width = 0) +
+  geom_errorbarh(aes(xmin = q_lower, xmax = q_upper), height = .2, size = 1) +
+  geom_jitter(data = q_tbl, aes(x = valor, y = q, color = modelo), height = 0.1, width = 0) +
+  labs(title = "Comparación de cuantiles 25%, 50% y 75%",
+       x = "Valor",
+       y = "Cuantil") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
 ## Modelos de vida acelerada
 
 - Con base en las gráficas anteriores, obsevamos que el estimador de la función de supervivencia se ajusta tanto a un modelo lognormal como loglogistico.
@@ -446,18 +509,24 @@ xfit_tbl %>%
 ## Modelo loglogistico
 
 ```{r}
-xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "loglogistic")
-tabla <- summary(xfit_rloglog1)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 3", "Log(scale)")) %>% 
+xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "loglogistic")
+tabla <- summary(xfit_rlognorm1)
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    "Configuración 1",
+    "Configuración 2",
+    "Configuración 3",
+    paste("Sensor", c("01", "03", "08", "13", "18")),
+    "Log(scale)")
+    ) %>%
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c") %>% 
-  kable_styling(font_size = 10)
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
+  row_spec(0, align = "c")
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
@@ -465,28 +534,22 @@ Log-verosimilitud del modelo `r tabla$loglik[2]`
 ## Modelo loglogistico
 
 ```{r}
-xfit_rloglog2 <- survreg(tiempo ~ 
-                     datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
-                     datos_agg$sensor_13 + datos_agg$sensor_18,
-                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
-                    dist = "loglogistic")
-
-tabla <- summary(xfit_rloglog2)
-
+xfit_rlognorm1 <- survreg(tiempo ~   datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03  +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "loglogistic")
+tabla <- summary(xfit_rlognorm1)
 tabla$table %>%
   as_tibble(rownames = "coef") %>%
   mutate(coef = c(
     "Intercepto",
-    "Config 3",
+    "Configuración 3",
     paste("Sensor", c("01", "03", "13", "18")),
     "Log(scale)")
-    )  %>% 
+    ) %>%
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c") %>% 
-  kable_styling(font_size = 10)
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
+  row_spec(0, align = "c")
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
@@ -494,18 +557,24 @@ Log-verosimilitud del modelo `r tabla$loglik[2]`
 ## Modelo lognormal
 
 ```{r}
-xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "lognormal")
-tabla <- summary(xfit_rloglog1)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 3", "Log(scale)")) %>% 
+xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "lognormal")
+tabla <- summary(xfit_rlognorm1)
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    "Configuración 1",
+    "Configuración 2",
+    "Configuración 3",
+    paste("Sensor", c("01", "03", "08", "13", "18")),
+    "Log(scale)")
+    ) %>%
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c") %>% 
-  kable_styling(font_size = 10)
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
+  row_spec(0, align = "c")
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
@@ -516,39 +585,18 @@ Log-verosimilitud del modelo `r tabla$loglik[2]`
 xfit_rlognorm1 <- survreg(tiempo ~  datos_agg$sensor_03 + datos_agg$sensor_08 +
                      datos_agg$sensor_13 + datos_agg$sensor_18, dist = "lognormal")
 tabla <- summary(xfit_rlognorm1)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 3", "Log(scale)")) %>% 
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    paste("Sensor", c("03", "08", "13", "18")),
+    "Log(scale)")
+    ) %>%
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
                caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c") %>% 
-  kable_styling(font_size = 10)
-```
-
-Log-verosimilitud del modelo `r tabla$loglik[2]`
-
-## Modelo lognormal
-
-```{r}
-xfit_rlognorm2 <- survreg(tiempo ~ 
-                     datos_agg$sensor_03 + datos_agg$sensor_08 + datos_agg$sensor_18,
-                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
-                    dist = "lognormal")
-
-tabla <- summary(xfit_rlognorm2)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", paste("Sensor", c("03", "08", "18")), "Log(scale)")) %>% 
-  knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
-               escape = FALSE, digits = 3,
-               caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c") %>%
-  kable_styling(font_size = 10)
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
+  row_spec(0, align = "c")
 ```
 
 Log-verosimilitud del modelo `r tabla$loglik[2]`
