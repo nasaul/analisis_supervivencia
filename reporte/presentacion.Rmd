@@ -39,7 +39,7 @@ library(stargazer)
 
 theme_set(theme_gdocs() + theme(plot.title = element_text(hjust = 0.5)))
 
-knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, fig.height = 3, cache = TRUE)
 
 datos <- read_rds(
   here::here("datos/datos.rds")
@@ -198,10 +198,12 @@ datos %>%
 
 ## Análisis exploratorio de los datos
 
-```{r, fig.height = 8}
+```{r, fig.height = 5}
 sensor1 <- melt(datos, id.vars='id', measure.vars=colnames(datos)[6:26])
 
-ggplot(sensor1, aes(x=variable, y=value)) + 
+sensor1 %>%
+  mutate(variable = gsub("sensor_(.*)", "Sensor \\1", variable)) %>%
+ggplot(aes(x=variable, y=value)) +
   geom_boxplot(fill = "#6497b1") +
   theme_gdocs() +
   labs(title = "Medición de sensores",
@@ -213,25 +215,29 @@ ggplot(sensor1, aes(x=variable, y=value)) +
 
 ## Análisis exploratorio de los datos
 
-```{r, fig.height = 8}
-datos %>% 
-  select(-starts_with("conf")) %>% 
-  gather(key = variable, value = medicion, starts_with("sensor")) %>% 
+```{r, fig.height = 6}
+datos %>%
+  select(-starts_with("conf")) %>%
+  gather(key = variable, value = medicion, starts_with("sensor")) %>%
+  mutate(variable = gsub("sensor_(.*)", "Sensor \\1", variable)) %>%
   ggplot(aes(x = medicion)) +
   geom_density() +
-  facet_wrap(vars(variable), scales = "free", ncol = 3) +
-  labs(title = "Distribuciones para los parámetros de configuración",
+  theme_gdocs() +
+  facet_wrap(vars(variable), scales = "free", ncol = 6) +
+  labs(title = "Distribuciones para los parámetros \nde configuración",
        x = "Medición",
-       y = "Densidad")
+       y = "Densidad") +
+  theme(axis.text.x = element_text(angle = 90), axis.text.y  = element_blank())
 ```
 
 ## Análisis exploratorio de los datos
 
 ```{r, fig.height = 5}
-datos %>% 
-  select(starts_with("sensor")) %>% 
-  as.matrix() %>% 
-  cor() %>% 
+datos %>%
+  select(starts_with("sensor")) %>%
+  rename_all(function(x) gsub("sensor_(.*)", "Sensor \\1", x )) %>%
+  as.matrix() %>%
+  cor() %>%
   ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
 ```
 
@@ -248,15 +254,17 @@ Se decide dejar solamente una variable de aquellos pares que tengan una correlac
 ## Análisis exploratorio de los datos
 
 ```{r}
-datos_sel <- datos %>% 
+datos_sel <- datos %>%
              select(-c(sensor_02, sensor_04, sensor_05, sensor_06, sensor_07, sensor_09, sensor_10,
                        sensor_11, sensor_12, sensor_14, sensor_15, sensor_16, sensor_17, sensor_19,
                        sensor_20, sensor_21))
 
-datos_sel %>% 
-  select(starts_with("sensor")) %>% 
-  as.matrix() %>% 
-  cor() %>% 
+datos_sel %>%
+  select(starts_with("sensor")) %>%
+    rename_all(function(x) gsub("sensor_(.*)", "Sensor \\1", x )) %>%
+
+  as.matrix() %>%
+  cor() %>%
   ggcorrplot(colors = c("firebrick", "white", "steelblue"), type = "upper")
 ```
 
@@ -273,7 +281,7 @@ En general cada sensor tiene mediciones en la siguiente escala:
 
 ## Estimador Kaplan Meier
 
-```{r}
+```{r, fig.height=5}
 datos_norm <- datos_sel %>%
               gather(key = variable, value = medicion, c(starts_with("conf"), starts_with("sensor"))) %>% 
               group_by(variable) %>% 
@@ -296,7 +304,7 @@ datos_agg <- max_ciclo %>%
 
 - Se procede a obtener el estimador Kaplan Meier para la función de supervivencia. 
 
-```{r}
+```{r, fig.height=4}
 tiempo <- Surv(datos_agg$max_ciclo, datos_agg$delta)
 
 xfit <- survfit(tiempo ~ 1, conf.type = "log-log")
@@ -308,14 +316,14 @@ xfit_tbl <- with(xfit, tibble(time, n.risk, n.event, n.censor, surv, lower, uppe
 
 ## Estimador Kaplan Meier
 
-```{r, fig.height = 8}
+```{r, fig.height = 5}
 xfit_tbl %>%   
   ggplot(aes(x = time, y = surv)) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
   geom_line(color = "steelblue", size = 1) +
   labs(title = "Función de supervivencia",
        x = "Ciclos",
-       y = "Probabilidad")
+       y = "Proporción de supervivencia")
 ```
 
 ## Comparación con modelos paramétricos
@@ -341,7 +349,7 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
   labs(title = "Función de supervivencia KM y exponencial",
        x = "Ciclos",
-       y = "Probabilidad") +
+       y = "Proporción de supervivencia") +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
@@ -368,7 +376,7 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
   labs(title = "Función de supervivencia KM y Weibull",
        x = "Ciclos",
-       y = "Probabilidad") +
+       y = "Proporción de supervivencia") +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
@@ -395,7 +403,7 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
   labs(title = "Función de supervivencia KM y lognormal",
        x = "Ciclos",
-       y = "Probabilidad") +
+       y = "Proporción de supervivencia") +
   xlim(0, 400) +
   theme(plot.title = element_text(hjust = 0.5))
 ```
@@ -423,7 +431,7 @@ xfit_tbl %>%
   geom_line(data = ajuste, aes(x = superior, y = ajuste), color = "firebrick", linetype = 2) +
   labs(title = "Función de supervivencia KM y loglogistica",
        x = "Ciclos",
-       y = "Probabilidad") +
+       y = "Proporción de supervivencia") +
   xlim(0, 400) +
   theme(plot.title = element_text(hjust = 0.5))
 ```
@@ -436,83 +444,68 @@ xfit_tbl %>%
 
 ## Modelo loglogistico
 
-```{r}
-xfit_rloglog1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "loglogistic")
-tabla <- summary(xfit_rloglog1)
+```{r, fig.height=5}
 
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
-  knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
-               escape = FALSE, digits = 3,
-               caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
-```
-
-## Modelo loglogistico
-
-```{r}
-xfit_rloglog2 <- survreg(tiempo ~ 
-                     datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
-                     datos_agg$sensor_13 + datos_agg$sensor_18,
-                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
-                    dist = "loglogistic")
-
-tabla <- summary(xfit_rloglog2)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", paste("Sensor", c("01", "03", "08", "13", "18")), "Log(scale)")) %>% 
-  knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
-               escape = FALSE, digits = 3,
-               caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
-```
-
-## Modelo lognormal
-
-```{r}
-xfit_rlognorm1 <- survreg(tiempo ~ datos_agg$conf_1 + datos_agg$conf_2 + datos_agg$conf_3, dist = "lognormal")
+xfit_rlognorm1 <- survreg(tiempo ~   datos_agg$conf_3 +datos_agg$sensor_01 + datos_agg$sensor_03  +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "loglogistic")
 tabla <- summary(xfit_rlognorm1)
 
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", "Configuración 1", "Configuración 2", "Configuración 2", "Log(scale)")) %>% 
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    "Config 3",
+    paste("Sensor", c("01", "03", "13", "18")),
+    "Log(scale)")
+    )  %>% 
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
-               caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
+               # caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
+  kable_styling(position = "center")
 ```
+
 
 ## Modelo lognormal
 
 ```{r}
-xfit_rlognorm2 <- survreg(tiempo ~ 
-                     datos_agg$sensor_01 + datos_agg$sensor_03 + datos_agg$sensor_08 +
-                     datos_agg$sensor_13 + datos_agg$sensor_18,
-                    #control = list(maxiter = 5000, outer.max = 100, rel.tolerance = 1e-05, toler.chol = 1e-06),
-                    dist = "lognormal")
+xfit_rlognorm1 <- survreg(tiempo ~  datos_agg$sensor_03 + datos_agg$sensor_08 +
+                     datos_agg$sensor_13 + datos_agg$sensor_18, dist = "lognormal")
+tabla <- summary(xfit_rlognorm1)
 
-tabla <- summary(xfit_rlognorm2)
-
-tabla$table %>% 
-  as_tibble(rownames = "coef") %>% 
-  mutate(coef = c("Intercepto", paste("Sensor", c("01", "03", "08", "13", "18")), "Log(scale)")) %>% 
+tabla$table %>%
+  as_tibble(rownames = "coef") %>%
+  mutate(coef = c(
+    "Intercepto",
+    paste("Sensor", c("03", "08", "13", "18")),
+    "Log(scale)")
+    ) %>% 
+  
   knitr::kable(format = "latex", booktabs = FALSE, longtable = FALSE, linesep = "",
                escape = FALSE, digits = 3,
-               caption = "Resultados del modelo de regresión",
-               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>% 
-  row_spec(0, align = "c")
+               # caption = "Resultados del modelo de regresión",
+               col.names = c("Coeficientes", "Valor", "Error estandar", "Estadístico Z", "p-value")) %>%
+  kable_styling(position = "center")
 ```
+
+## Interpretación
+
+-  Un aumento de una desviación estándar del sensor 3 resulta en una disminución del $0.89\%$ del tiempo de vida.
+- Un aumento de una desviación estándar del sensor 8 resulta en un aumento del $8.54\%$ del tiempo de vida.
+- Un aumento de una desviación estándar del sensor 13 resulta en una disminución del $0.69\%$ del tiempo de vida.
+- Un aumento de una desviación estándar del sensor 18 resulta en una disminución del $6.76\%$ del tiempo de vida.
+
+
 
 # Conclusiones
 
 ## Conclusiones
 
-Aquí van las conclusiones
+- Se encontró un buen ajuste de la función de supervivencia con Kaplan-Meier.
+- Se encontró que los modelos paramétricos loglogístico o lognormal podían ajustar bien al estimador de Kaplan-Meier.  
+- Se generaron modelos con ambas distribuciones y se encontró que el mejor ajuste lo tenía el modelo lognormal.
+- Se interpretaron los coeficientes y los sensores que mayor impacto tienen sobre la supervivencia son el 8 y el 18.
+- Se generó el modelo predictivo con el modelo lognormal.
 
 # Bibliografía
 
